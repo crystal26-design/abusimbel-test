@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>阿布辛贝神庙·智能语音导览</title>
+    <style>
+        :root {
+            --gold: #d4af37;
+            --dark: #1a1510;
+            --sand: #f4eae1;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--dark);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* 顶部标题栏 */
+        header {
+            background-color: rgba(0, 0, 0, 0.8);
+            text-align: center;
+            padding: 12px 0;
+            border-bottom: 2px solid var(--gold);
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--gold);
+            letter-spacing: 2px;
+        }
+        /* 手绘制地图容器 */
+        #map-container {
+            flex: 1;
+            position: relative;
+            background: #2a221b;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #hand-drawn-map {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* 保证手绘地图不缩放变形 */
+        }
+        /* 9个点位的绝对定位样式 */
+        .spot-marker {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            background-color: rgba(212, 175, 55, 0.9);
+            border: 2px solid #fff;
+            color: var(--dark);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--gold);
+            transform: translate(-50%, -50%);
+            transition: all 0.3s;
+            z-index: 10;
+        }
+        .spot-marker.active {
+            background-color: #ff4500;
+            box-shadow: 0 0 25px #ff4500;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+        /* 底部操作面板：语音播放器 + AI 对话 */
+        #panel-control {
+            background-color: rgba(26, 21, 16, 0.95);
+            border-top: 2px solid var(--gold);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 45vh;
+            overflow-y: auto;
+        }
+        /* 语音播放控制条 */
+        .audio-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--gold);
+        }
+        .audio-info {
+            font-size: 0.9rem;
+            color: var(--sand);
+        }
+        .play-btn {
+            background-color: var(--gold);
+            border: none;
+            color: var(--dark);
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        /* AI问答区域 */
+        .chat-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .chat-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(214, 175, 55, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 80px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #ddd;
+        }
+        .chat-input-wrap {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input-wrap input {
+            flex: 1;
+            background: #2b231a;
+            border: 1px solid var(--gold);
+            border-radius: 20px;
+            padding: 8px 15px;
+            color: #fff;
+            outline: none;
+            font-size: 0.9rem;
+        }
+        .chat-input-wrap button {
+            background: var(--gold);
+            border: none;
+            color: var(--dark);
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
+
+    <div id="map-container">
+        <!-- 🎯 替换为你手绘地图在GitHub上的真实图片路径 -->
+        <img id="hand-drawn-map" src="images/map.jpg" alt="神庙手绘地图">
+
+        <!-- 9个标注点：张总，请根据地图实际比例微调 left 和 top 的百分比数值 -->
+        <div class="spot-marker" style="left: 15%; top: 40%;" onclick="selectSpot(0)">0</div>
+        <div class="spot-marker" style="left: 28%; top: 35%;" onclick="selectSpot(1)">1</div>
+        <div class="spot-marker" style="left: 40%; top: 45%;" onclick="selectSpot(2)">2</div>
+        <div class="spot-marker" style="left: 50%; top: 30%;" onclick="selectSpot(3)">3</div>
+        <div class="spot-marker" style="left: 60%; top: 50%;" onclick="selectSpot(4)">4</div>
+        <div class="spot-marker" style="left: 68%; top: 35%;" onclick="selectSpot(5)">5</div>
+        <div class="spot-marker" style="left: 78%; top: 55%;" onclick="selectSpot(6)">6</div>
+        <div class="spot-marker" style="left: 85%; top: 40%;" onclick="selectSpot(7)">7</div>
+        <div class="spot-marker" style="left: 92%; top: 48%;" onclick="selectSpot(8)">8</div>
+    </div>
+
+    <div id="panel-control">
+        <!-- 语音播放器 -->
+        <div class="audio-bar">
+            <div class="audio-info">
+                <span id="spot-title">🔊 请点击地图点位开启讲解</span>
+            </div>
+            <button class="play-btn" id="play-trigger" onclick="toggleAudio()" disabled>播放</button>
+            <audio id="global-player" style="display: none;"></audio>
+        </div>
+
+        <!-- AI互动问答 -->
+        <div class="chat-section">
+            <div class="chat-box" id="ai-bubble">
+                🔮 <b>法老密示：</b><br>游客，点击地图上的金色徽章即可聆听史诗。若有历史疑问，尽管在此向我发问……
+            </div>
+            <div class="chat-input-wrap">
+                <input type="text" id="user-question" placeholder="向法老拉美西斯二世提问..." onkeypress="handleKeyPress(event)">
+                <button onclick="askPharaoh()">提问</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 点位名称
+        const spotNames = {
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        };
+
+        let currentSpotId = null;
+        const player = document.getElementById("global-player");
+        const playBtn = document.getElementById("play-trigger");
+
+        // 切换和选择点位
+        function selectSpot(id) {
+            currentSpotId = id;
+            
+            // 切换标记激活状态样式
+            document.querySelectorAll(".spot-marker").forEach((el, index) => {
+                if (index === id) el.classList.add("active");
+                else el.classList.remove("active");
+            });
+
+            // 更新播放器状态
+            document.getElementById("spot-title").innerText = spotNames[id];
+            playBtn.removeAttribute("disabled");
+            playBtn.innerText = "播放";
+
+            // 载入对应的 mp3 录音音频（audio/0.mp3 - audio/8.mp3）
+            player.src = `audio/${id}.mp3`;
+            player.play().then(() => {
+                playBtn.innerText = "暂停";
+            }).catch(e => console.log("等待用户手动触发播放"));
+
+            // 联动AI提示词更新
+            document.getElementById("ai-bubble").innerHTML = `🔮 <b>法老密示：</b><br>你已抵达【${spotNames[id]}】。听完我的低语，如果还有不解之谜，写在下方问我。`;
+        }
+
+        // 控制音频播放/暂停
+        function toggleAudio() {
+            if (currentSpotId === null) return;
+            if (player.paused) {
+                player.play();
+                playBtn.innerText = "暂停";
+            } else {
+                player.pause();
+                playBtn.innerText = "播放";
+            }
+        }
+
+        // 监听回车发送
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') askPharaoh();
+        }
+
+        // 核心：请求隐藏的 Vercel API 发起对话
+        async function askPharaoh() {
+            const input = document.getElementById("user-question");
+            const bubble = document.getElementById("ai-bubble");
+            const question = input.value.trim();
+
+            if (!question) return;
+
+            // 清空输入框
+            input.value = "";
+            bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
+
+            try {
+                // 拼接带当前位置的提问，让 AI 结合上下文更聪明
+                const contextQuestion = currentSpotId !== null 
+                    ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
+                    : question;
+
+                // 重点：调用 Vercel 帮我们部署的隐形代理服务器接口，完美避开 Token 被抓包！
+                const res = await fetch(`/api/chat?question=${encodeURIComponent(contextQuestion)}`);
+                const data = await res.json();
+
+                if (data.answer) {
+                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>${data.answer}`;
+                } else {
+                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>风沙太大，未听清你的言语，请再试一次。`;
+                }
+            } catch (error) {
+                console.error(error);
+                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，请稍后再来打扰。`;
+            }
+        }
+    </script>
+</body>
+</html>
