@@ -21,9 +21,8 @@
             height: 100vh;
             overflow: hidden;
         }
-        /* 顶部标题栏 */
         header {
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 0.85);
             text-align: center;
             padding: 12px 0;
             border-bottom: 2px solid var(--gold);
@@ -32,7 +31,6 @@
             color: var(--gold);
             letter-spacing: 2px;
         }
-        /* 手绘制地图容器 */
         #map-container {
             flex: 1;
             position: relative;
@@ -42,12 +40,12 @@
             justify-content: center;
             align-items: center;
         }
+        /* 🎯 地图图片元素 */
         #hand-drawn-map {
             width: 100%;
             height: 100%;
-            object-fit: contain; /* 保证手绘地图不缩放变形 */
+            object-fit: contain;
         }
-        /* 9个点位的绝对定位样式 */
         .spot-marker {
             position: absolute;
             width: 32px;
@@ -72,7 +70,6 @@
             box-shadow: 0 0 25px #ff4500;
             transform: translate(-50%, -50%) scale(1.2);
         }
-        /* 底部操作面板：语音播放器 + AI 对话 */
         #panel-control {
             background-color: rgba(26, 21, 16, 0.95);
             border-top: 2px solid var(--gold);
@@ -83,7 +80,6 @@
             max-height: 45vh;
             overflow-y: auto;
         }
-        /* 语音播放控制条 */
         .audio-bar {
             display: flex;
             align-items: center;
@@ -106,7 +102,11 @@
             font-weight: bold;
             cursor: pointer;
         }
-        /* AI问答区域 */
+        .play-btn:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
         .chat-section {
             display: flex;
             flex-direction: column;
@@ -117,8 +117,8 @@
             border: 1px solid rgba(214, 175, 55, 0.3);
             border-radius: 8px;
             padding: 12px;
-            min-height: 80px;
-            max-height: 150px;
+            min-height: 70px;
+            max-height: 140px;
             overflow-y: auto;
             font-size: 0.9rem;
             line-height: 1.5;
@@ -154,10 +154,10 @@
     <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
 
     <div id="map-container">
-        <!-- 🎯 替换为你手绘地图在GitHub上的真实图片路径 -->
+        <!-- 🎯 图片路径直接指向 images/map.jpg -->
         <img id="hand-drawn-map" src="images/map.jpg" alt="神庙手绘地图">
 
-        <!-- 9个标注点：张总，请根据地图实际比例微调 left 和 top 的百分比数值 -->
+        <!-- 9个标注点位置分布 -->
         <div class="spot-marker" style="left: 15%; top: 40%;" onclick="selectSpot(0)">0</div>
         <div class="spot-marker" style="left: 28%; top: 35%;" onclick="selectSpot(1)">1</div>
         <div class="spot-marker" style="left: 40%; top: 45%;" onclick="selectSpot(2)">2</div>
@@ -170,7 +170,6 @@
     </div>
 
     <div id="panel-control">
-        <!-- 语音播放器 -->
         <div class="audio-bar">
             <div class="audio-info">
                 <span id="spot-title">🔊 请点击地图点位开启讲解</span>
@@ -179,7 +178,6 @@
             <audio id="global-player" style="display: none;"></audio>
         </div>
 
-        <!-- AI互动问答 -->
         <div class="chat-section">
             <div class="chat-box" id="ai-bubble">
                 🔮 <b>法老密示：</b><br>游客，点击地图上的金色徽章即可聆听史诗。若有历史疑问，尽管在此向我发问……
@@ -192,49 +190,42 @@
     </div>
 
     <script>
-        // 点位名称
         const spotNames = {
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8
+            0: "0号点：神庙主入口巨像",
+            1: "1号点：大柱厅",
+            2: "2号点：第二厅壁画",
+            3: "3号点：多柱厅冥界浮雕",
+            4: "4号点：祭祀前厅",
+            5: "5号点：圣殿四神像",
+            6: "6号点：太阳奇迹观测点",
+            7: "7号点：哈索尔神庙（王后庙）",
+            8: "8号点：纳赛尔湖畔观景台"
         };
 
         let currentSpotId = null;
         const player = document.getElementById("global-player");
         const playBtn = document.getElementById("play-trigger");
 
-        // 切换和选择点位
         function selectSpot(id) {
             currentSpotId = id;
             
-            // 切换标记激活状态样式
             document.querySelectorAll(".spot-marker").forEach((el, index) => {
                 if (index === id) el.classList.add("active");
                 else el.classList.remove("active");
             });
 
-            // 更新播放器状态
             document.getElementById("spot-title").innerText = spotNames[id];
             playBtn.removeAttribute("disabled");
             playBtn.innerText = "播放";
 
-            // 载入对应的 mp3 录音音频（audio/0.mp3 - audio/8.mp3）
             player.src = `audio/${id}.mp3`;
             player.play().then(() => {
                 playBtn.innerText = "暂停";
-            }).catch(e => console.log("等待用户手动触发播放"));
+            }).catch(e => console.log("用户需交互后播放"));
 
-            // 联动AI提示词更新
             document.getElementById("ai-bubble").innerHTML = `🔮 <b>法老密示：</b><br>你已抵达【${spotNames[id]}】。听完我的低语，如果还有不解之谜，写在下方问我。`;
         }
 
-        // 控制音频播放/暂停
         function toggleAudio() {
             if (currentSpotId === null) return;
             if (player.paused) {
@@ -246,12 +237,10 @@
             }
         }
 
-        // 监听回车发送
         function handleKeyPress(e) {
             if (e.key === 'Enter') askPharaoh();
         }
 
-        // 核心：请求隐藏的 Vercel API 发起对话
         async function askPharaoh() {
             const input = document.getElementById("user-question");
             const bubble = document.getElementById("ai-bubble");
@@ -259,17 +248,14 @@
 
             if (!question) return;
 
-            // 清空输入框
             input.value = "";
             bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
 
             try {
-                // 拼接带当前位置的提问，让 AI 结合上下文更聪明
                 const contextQuestion = currentSpotId !== null 
                     ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
                     : question;
 
-                // 重点：调用 Vercel 帮我们部署的隐形代理服务器接口，完美避开 Token 被抓包！
                 const res = await fetch(`/api/chat?question=${encodeURIComponent(contextQuestion)}`);
                 const data = await res.json();
 
@@ -280,8 +266,17 @@
                 }
             } catch (error) {
                 console.error(error);
-                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，请稍后再来打扰。`;
+                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
             }
+        }
+
+        // 注册 PWA 离线服务
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('离线导览系统准备就绪！'))
+                    .catch(err => console.log('离线注册失败:', err));
+            });
         }
     </script>
 </body>
