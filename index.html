@@ -153,12 +153,13 @@
 
     <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
 
-    <div id="map-container">
-        <!-- 🎯 图片路径直接指向 images/map.jpg -->
+   <div id="map-container">
+    <div class="map-wrapper" style="position: relative; display: inline-block; width: 100%;">
+        <!-- 图片 -->
         <img id="hand-drawn-map" src="images/map.jpg.png" alt="神庙手绘地图">
 
-        <!-- 9个标注点位置分布 -->
-        <div class="spot-marker" style="left: 22%; top: 12%;" onclick="selectSpot(0)">0</div>
+        <!-- 9个标注点 -->
+        <div class="spot-marker" style="left: 42%; top: 18%;" onclick="selectSpot(0)">0</div>
         <div class="spot-marker" style="left: 48%; top: 46%;" onclick="selectSpot(1)">1</div>
         <div class="spot-marker" style="left: 56%; top: 45%;" onclick="selectSpot(2)">2</div>
         <div class="spot-marker" style="left: 71%; top: 32%;" onclick="selectSpot(3)">3</div>
@@ -168,6 +169,7 @@
         <div class="spot-marker" style="left: 80%; top: 72%;" onclick="selectSpot(7)">7</div>
         <div class="spot-marker" style="left: 81%; top: 22%;" onclick="selectSpot(8)">8</div>
     </div>
+</div>
 
     <div id="panel-control">
         <div class="audio-bar">
