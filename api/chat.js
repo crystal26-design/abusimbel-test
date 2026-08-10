@@ -45,13 +45,19 @@ export default async function handler(req, res) {
             })
         });
 
-        const data = await response.json();
-        if (data.code !== 0) {
-            return res.status(500).json({ error: data.msg || "Coze API Error" });
-        }
+       const data = await response.json();
 
-        const chatId = data.data.id;
+// 防护 1：如果扣子返回错误，直接抛出真实错误信息，不再继续往下走
+if (!response.ok || data.code !== 0 || !data.data) {
+    return res.status(500).json({ 
+        error: data.msg || "扣子接口返回异常", 
+        rawResponse: data 
+    });
+}
 
+// 防护 2：安全获取 chatId
+const chatId = data.data.id;
+        
         // 5. 第二步：轮询状态，等待扣子回答完毕（设置上限防止死循环）
         let isCompleted = false;
         let attempts = 0;
