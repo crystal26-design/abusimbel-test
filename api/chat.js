@@ -56,6 +56,9 @@ if (!response.ok || data.code !== 0 || !data.data) {
 }
 
 // 防护 2：安全获取 chatId
+if (!data || !data.data || !data.data.id) {
+    return res.status(500).json({ error: "扣子发起对话失败，未能获取到 chatId", details: data });
+}
 const chatId = data.data.id;
         
         // 5. 第二步：轮询状态，等待扣子回答完毕（设置上限防止死循环）
@@ -77,10 +80,16 @@ const chatId = data.data.id;
             });
 
             const statusData = await statusRes.json();
-            const status = statusData.data.status;
+            // 使用 ?. 防止 statusData.data 为 undefined 时直接崩溃
+const status = statusData?.data?.status;
 
-            if (status === "completed") {
-                isCompleted = true;
+if (status === "completed") {
+    isCompleted = true;
+} else if (status === "failed" || status === "canceled") {
+    return res.status(500).json({ error: "扣子生成回答失败", details: statusData });
+} else if (!status) {
+    return res.status(500).json({ error: "无法获取轮询状态，扣子返回数据异常", details: statusData });
+}
                 // 对话完成，拉取消息列表中的法老回答
                 const msgRes = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}`, {
                     method: "GET",
