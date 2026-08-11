@@ -1,5 +1,5 @@
 // api/chat.js
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // 1. 设置跨域安全请求头（允许前端网页顺利调取）
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
