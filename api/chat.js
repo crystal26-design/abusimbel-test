@@ -1,6 +1,6 @@
 // api/chat.js
 module.exports = async function handler(req, res) {
-    // 1. 设置跨域安全请求头（允许前端网页顺利调取）
+    // 1. 设置跨域安全请求头
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -9,22 +9,24 @@ module.exports = async function handler(req, res) {
         return res.status(200).end();
     }
 
-    // 2. 获取前端网页传过来的问题
-    const { question } = req.query;
+    // 2. 获取提问参数
+    const question = req.query.question || (req.body && req.body.question);
     if (!question) {
-        return res.status(400).json({ error: "Missing question parameter" });
+        return res.status(400).json({ error: '提问内容不能为空' });
     }
 
-    // 3. 从 Vercel 环境变量中安全读取 Token 和 Bot ID（隐藏钥匙）
+    // 3. 读取 Vercel 环境变量
     const COZE_TOKEN = process.env.COZE_API_TOKEN;
     const COZE_BOT_ID = process.env.COZE_BOT_ID;
 
     if (!COZE_TOKEN || !COZE_BOT_ID) {
-        return res.status(500).json({ error: "Server API token or Bot ID not configured" });
+        return res.status(500).json({ 
+            error: "配置缺失：请检查 Vercel 环境变量 COZE_API_TOKEN 和 COZE_BOT_ID" 
+        });
     }
 
     try {
-        // 4. 第一步：向扣子发起 API 对话请求
+        // 4. 发起对话
         const response = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: {
@@ -33,7 +35,7 @@ module.exports = async function handler(req, res) {
             },
             body: JSON.stringify({
                 "bot_id": COZE_BOT_ID,
-                "user_id": "tourist_" + Math.random().toString(36).substring(2, 9),
+                "user_id": "user_" + Math.random().toString(36).substring(2, 9),
                 "additional_messages": [
                     {
                         "role": "user",
@@ -45,33 +47,28 @@ module.exports = async function handler(req, res) {
             })
         });
 
-       const data = await response.json();
+        const data = await response.json();
 
-// 防护 1：如果扣子返回错误，直接抛出真实错误信息，不再继续往下走
-if (!response.ok || data.code !== 0 || !data.data) {
-    return res.status(500).json({ 
-        error: data.msg || "扣子接口返回异常", 
-        rawResponse: data 
-    });
-}
+        // 校验第一步返回
+        if (!data || data.code !== 0 || !data.data || !data.data.id) {
+            return res.status(500).json({ 
+                error: "扣子发起对话失败", 
+                details: data 
+            });
+        }
 
-// 防护 2：安全获取 chatId
-if (!data || !data.data || !data.data.id) {
-    return res.status(500).json({ error: "扣子发起对话失败，未能获取到 chatId", details: data });
-}
-const chatId = data.data.id;
-        
-        // 5. 第二步：轮询状态，等待扣子回答完毕（设置上限防止死循环）
+        const chatId = data.data.id;
+        const conversationId = data.data.conversation_id;
+
+        // 5. 轮询状态，等待回答完成
         let isCompleted = false;
         let attempts = 0;
-        let finalAnswer = "法老沉思了太久，请重试一下吧。";
 
-        while (!isCompleted && attempts < 10) {
-            // 每隔 1.2 秒查询一次回答进度
+        while (!isCompleted && attempts < 15) {
             await new Promise(resolve => setTimeout(resolve, 1200));
             attempts++;
 
-            const statusRes = await fetch(`https://api.coze.cn/v3/chat/retrieve?chat_id=${chatId}`, {
+            const statusRes = await fetch(`https://api.coze.cn/v3/chat/retrieve?chat_id=${chatId}&conversation_id=${conversationId}`, {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${COZE_TOKEN}`,
@@ -80,39 +77,36 @@ const chatId = data.data.id;
             });
 
             const statusData = await statusRes.json();
-            // 使用 ?. 防止 statusData.data 为 undefined 时直接崩溃
-const status = statusData?.data?.status;
+            
+            // 安全读取 status，防止崩溃
+            const status = statusData?.data?.status;
 
-if (status === "completed") {
-    isCompleted = true;
-} else if (status === "failed" || status === "canceled") {
-    return res.status(500).json({ error: "扣子生成回答失败", details: statusData });
-} else if (!status) {
-    return res.status(500).json({ error: "无法获取轮询状态，扣子返回数据异常", details: statusData });
-}
-                // 对话完成，拉取消息列表中的法老回答
-                const msgRes = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}`, {
-                    method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${COZE_TOKEN}`,
-                        "Content-Type": "application/json"
-                    }
-                });
-                const msgData = await msgRes.json();
-                const assistantMessage = msgData.data.find(msg => msg.role === "assistant" && msg.type === "answer");
-                if (assistantMessage) {
-                    finalAnswer = assistantMessage.content;
-                }
-            } else if (status === "failed" || status === "canceled") {
+            if (status === "completed") {
                 isCompleted = true;
-                finalAnswer = "法老暂时不想回答这个问题，请重新提问。";
+            } else if (status === "failed" || status === "canceled") {
+                return res.status(500).json({ error: "扣子生成回答失败", details: statusData });
+            } else if (!status) {
+                return res.status(500).json({ error: "获取轮询状态异常", details: statusData });
             }
         }
 
-        // 6. 将法老的回答安全返回给前端网页
-        return res.status(200).json({ answer: finalAnswer });
+        if (!isCompleted) {
+            return res.status(500).json({ error: "等待扣子回答超时，请重试" });
+        }
+
+        // 6. 拉取消息内容
+        const msgRes = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}&conversation_id=${conversationId}`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${COZE_TOKEN}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        const msgData = await msgRes.json();
+        return res.status(200).json(msgData);
 
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message || "服务器内部程序崩溃" });
     }
-}
+};
