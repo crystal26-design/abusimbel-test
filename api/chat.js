@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // 关闭stream，普通模式创建对话
+        // 创建对话，关闭stream
         const createChatResp = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: {
@@ -44,23 +44,24 @@ module.exports = async function handler(req, res) {
         });
 
         const createData = await createChatResp.json();
-        if (createData.code !== 0 || !createData.data || !createData.data.id) {
+        if (createData.code !== 0 || !createData.data) {
             return res.status(500).json({
                 error: "扣子创建对话失败",
                 cozeError: createData
             });
         }
         const chatId = createData.data.id;
+        const conversationId = createData.data.conversation_id;
 
         let answerText = "";
         let finished = false;
         const maxPoll = 40;
 
-        // 轮询消息列表接口 v3/chat/message/list
         for (let i = 0; i < maxPoll; i++) {
             await new Promise(r => setTimeout(r, 600));
 
-            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}`, {
+            // 同时带上 conversation_id + chat_id 两个参数
+            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversationId}&chat_id=${chatId}`, {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${COZE_TOKEN}`
@@ -82,7 +83,6 @@ module.exports = async function handler(req, res) {
                 }
             }
 
-            // status:completed代表对话结束
             const chatInfo = messageList.find(item => item.type === "chat");
             if (chatInfo && chatInfo.status === "completed") {
                 finished = true;
