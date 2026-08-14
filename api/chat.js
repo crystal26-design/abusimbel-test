@@ -15,7 +15,6 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: '提问内容不能为空' });
     }
 
-    // 获取环境变量
     const COZE_TOKEN = process.env.COZE_API_TOKEN;
     const COZE_BOT_ID = process.env.COZE_BOT_ID;
 
@@ -24,7 +23,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // 1. 创建对话会话
+        // 1. 创建流式chat会话
         const createChatResp = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: {
@@ -41,74 +40,61 @@ module.exports = async function handler(req, res) {
                         "content_type": "text"
                     }
                 ],
-                "auto_save_history": true
+                "auto_save_history": true,
+                "stream": true
             })
         });
 
         const createData = await createChatResp.json();
-
-        // 创建会话失败直接返回原始错误
         if (createData.code !== 0 || !createData.data || !createData.data.id) {
             return res.status(500).json({
                 error: "扣子创建对话失败",
                 cozeError: createData
             });
         }
-
         const chatId = createData.data.id;
 
-        // 2. 轮询获取对话结果，最多等待30次
-        let answerText = "";
-        let finish = false;
-        const maxPoll = 30;
+        // 2. 请求SSE stream接口拿到完整回复
+        const streamResp = await fetch(`https://api.coze.cn/v3/chat/stream?chat_id=${chatId}`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${COZE_TOKEN}`
+            }
+        });
 
-        for (let i = 0; i < maxPoll; i++) {
-            await new Promise(r => setTimeout(r, 800));
-
-            const pollResp = await fetch(`https://api.coze.cn/v3/chat/${chatId}`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${COZE_TOKEN}`,
-                    "Content-Type": "application/json"
-                }
+        if (!streamResp.ok) {
+            const errJson = await streamResp.json();
+            return res.status(500).json({
+                error: "获取流式流失败",
+                cozeError: errJson
             });
-            const pollData = await pollResp.json();
+        }
 
-            if (pollData.code !== 0) {
-                return res.status(500).json({
-                    error: "轮询获取对话结果失败",
-                    cozeError: pollData
-                });
-            }
+        // 读取SSE文本块，拼接answer
+        const buffer = await streamResp.text();
+        let answerText = "";
+        const lines = buffer.split("\n");
 
-            const status = pollData.data.status;
-            const messages = pollData.data.messages || [];
-
-            // 收集assistant回答文本
-            for (const msg of messages) {
-                if (msg.role === "assistant" && msg.type === "answer" && msg.content) {
-                    answerText = msg.content;
+        for (const line of lines) {
+            if (!line.startsWith("data:")) continue;
+            const raw = line.replace(/^data:\s*/, "");
+            if(raw === "[DONE]") continue;
+            try {
+                const event = JSON.parse(raw);
+                if(event.type === "answer" && event.content){
+                    answerText += event.content;
                 }
-            }
-
-            if (status === "completed") {
-                finish = true;
-                break;
-            }
-            if (status === "failed") {
-                return res.status(500).json({
-                    error: "扣子对话执行失败",
-                    cozeError: pollData
-                });
+            }catch(e){
+                //忽略解析错误行
             }
         }
 
-        if (!finish) {
-            return res.status(504).json({ error: "对话超时，请重试" });
+        if(!answerText){
+            return res.status(500).json({error:"没有获取到模型回答"});
         }
 
         return res.status(200).json({
-            success: true,
+            success:true,
             answer: answerText
         });
 
