@@ -1,6 +1,5 @@
 // pages/api/chat.js
 module.exports = async function handler(req, res) {
-    // 设置跨域请求头
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -9,7 +8,6 @@ module.exports = async function handler(req, res) {
         return res.status(200).end();
     }
 
-    // 获取参数
     const question = req.query.question || (req.body && req.body.question);
     if (!question) {
         return res.status(400).json({ error: '提问内容不能为空' });
@@ -23,7 +21,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // 1. 创建流式chat会话
+        // 关闭stream，普通模式创建对话
         const createChatResp = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: {
@@ -41,7 +39,7 @@ module.exports = async function handler(req, res) {
                     }
                 ],
                 "auto_save_history": true,
-                "stream": true
+                "stream": false
             })
         });
 
@@ -54,47 +52,59 @@ module.exports = async function handler(req, res) {
         }
         const chatId = createData.data.id;
 
-        // 2. 请求SSE stream接口拿到完整回复
-        const streamResp = await fetch(`https://api.coze.cn/v3/chat/stream?chat_id=${chatId}`, {
-            method: "GET",
-            headers: {
-                "Authorization": `Bearer ${COZE_TOKEN}`
-            }
-        });
-
-        if (!streamResp.ok) {
-            const errJson = await streamResp.json();
-            return res.status(500).json({
-                error: "获取流式流失败",
-                cozeError: errJson
-            });
-        }
-
-        // 读取SSE文本块，拼接answer
-        const buffer = await streamResp.text();
         let answerText = "";
-        const lines = buffer.split("\n");
+        let finished = false;
+        const maxPoll = 40;
 
-        for (const line of lines) {
-            if (!line.startsWith("data:")) continue;
-            const raw = line.replace(/^data:\s*/, "");
-            if(raw === "[DONE]") continue;
-            try {
-                const event = JSON.parse(raw);
-                if(event.type === "answer" && event.content){
-                    answerText += event.content;
+        // 轮询消息列表接口 v3/chat/message/list
+        for (let i = 0; i < maxPoll; i++) {
+            await new Promise(r => setTimeout(r, 600));
+
+            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chatId}`, {
+                method: "GET",
+                headers: {
+                    "Authorization": `Bearer ${COZE_TOKEN}`
                 }
-            }catch(e){
-                //忽略解析错误行
+            });
+
+            const msgData = await msgResp.json();
+            if (msgData.code !== 0) {
+                return res.status(500).json({
+                    error: "获取消息列表失败",
+                    cozeError: msgData
+                });
+            }
+
+            const messageList = msgData.data || [];
+            for (const m of messageList) {
+                if (m.role === "assistant" && m.type === "answer" && m.content) {
+                    answerText = m.content;
+                }
+            }
+
+            // status:completed代表对话结束
+            const chatInfo = messageList.find(item => item.type === "chat");
+            if (chatInfo && chatInfo.status === "completed") {
+                finished = true;
+                break;
+            }
+            if (chatInfo && chatInfo.status === "failed") {
+                return res.status(500).json({
+                    error: "机器人对话执行失败",
+                    cozeError: msgData
+                });
             }
         }
 
-        if(!answerText){
-            return res.status(500).json({error:"没有获取到模型回答"});
+        if (!finished) {
+            return res.status(504).json({ error: "对话超时，请重新提问" });
+        }
+        if (!answerText) {
+            return res.status(500).json({ error: "未获取到机器人回复" });
         }
 
         return res.status(200).json({
-            success:true,
+            success: true,
             answer: answerText
         });
 
