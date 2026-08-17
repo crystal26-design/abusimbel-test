@@ -84,15 +84,17 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 重点！增加 type === "answer" 过滤，拿到真正AI输出
         const assistantMsg = msgData.data.messages.find(item => item.role === "assistant" && item.type === "answer");
         if (!assistantMsg) {
             return res.status(500).json({ error: "未找到AI回答消息", raw: msgData });
         }
 
+        // 兼容坑：content为空时读取 reasoning_content
+        const answerText = assistantMsg.content?.trim() || assistantMsg.reasoning_content;
+
         return res.status(200).json({
             success: true,
-            answer: assistantMsg.content
+            answer: answerText
         });
 
     } catch (err) {
