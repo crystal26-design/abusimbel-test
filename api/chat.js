@@ -77,19 +77,21 @@ module.exports = async function handler(req, res) {
         if (msgData.code !== 0) {
             return res.status(500).json({ error: "获取消息列表失败", cozeError: msgData });
         }
-        if (!msgData.data || !Array.isArray(msgData.data.messages)) {
+        // 关键修复：msgData.data 本身就是消息数组，不是 {messages:[]} 对象
+        if (!Array.isArray(msgData.data)) {
             return res.status(500).json({
                 error: "message/list 返回数据异常",
                 raw_msg_response: msgData
             });
         }
+        const messages = msgData.data;
 
-        const assistantMsg = msgData.data.messages.find(item => item.role === "assistant" && item.type === "answer");
+        const assistantMsg = messages.find(item => item.role === "assistant" && item.type === "answer");
         if (!assistantMsg) {
             return res.status(500).json({ error: "未找到AI回答消息", raw: msgData });
         }
 
-        // 兼容坑：content为空时读取 reasoning_content
+        //兼容 content为空取reasoning_content
         const answerText = assistantMsg.content?.trim() || assistantMsg.reasoning_content;
 
         return res.status(200).json({
