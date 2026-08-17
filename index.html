@@ -1,76 +1,285 @@
-// pages/api/chat.js
-module.exports = async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>阿布辛贝神庙·智能语音导览</title>
+    <style>
+        :root {
+            --gold: #d4af37;
+            --dark: #1a1510;
+            --sand: #f4eae1;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--dark);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        header {
+            background-color: rgba(0, 0, 0, 0.85);
+            text-align: center;
+            padding: 12px 0;
+            border-bottom: 2px solid var(--gold);
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--gold);
+            letter-spacing: 2px;
+        }
+        #map-container {
+            flex: 1;
+            position: relative;
+            background: #2a221b;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        /* 🎯 地图图片元素 */
+#hand-drawn-map {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+        .spot-marker {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(212, 175, 55, 0.9);
+            border: 2px solid #fff;
+            color: var(--dark);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 11px;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--gold);
+            transform: translate(-50%, -50%);
+            transition: all 0.3s;
+            z-index: 10;
+        }
+        .spot-marker.active {
+            background-color: #ff4500;
+            box-shadow: 0 0 25px #ff4500;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+        #panel-control {
+            background-color: rgba(26, 21, 16, 0.95);
+            border-top: 2px solid var(--gold);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 45vh;
+            overflow-y: auto;
+        }
+        .audio-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--gold);
+        }
+        .audio-info {
+            font-size: 0.9rem;
+            color: var(--sand);
+        }
+        .play-btn {
+            background-color: var(--gold);
+            border: none;
+            color: var(--dark);
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .play-btn:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .chat-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .chat-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(214, 175, 55, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 70px;
+            max-height: 140px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #ddd;
+        }
+        .chat-input-wrap {
+            display: flex;
+            gap: 8px;
+        }
+        .chat-input-wrap input {
+            flex: 1;
+            background: #2b231a;
+            border: 1px solid var(--gold);
+            border-radius: 20px;
+            padding: 8px 15px;
+            color: #fff;
+            outline: none;
+            font-size: 0.9rem;
+        }
+        .chat-input-wrap button {
+            background: var(--gold);
+            border: none;
+            color: var(--dark);
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
 
-    const question = req.query.question || (req.body && req.body.question);
-    if (!question) {
-        return res.status(400).json({ error: '提问内容不能为空' });
-    }
+   <div id="map-container">
+    <div class="map-wrapper" style="position: relative; display: inline-block; width: 100%;">
+        <!-- 图片 -->
+        <img id="hand-drawn-map" src="images/map.jpg.png" alt="神庙手绘地图">
 
-    const COZE_TOKEN = process.env.COZE_API_TOKEN;
-    const COZE_BOT_ID = process.env.COZE_BOT_ID;
+        <!-- 9个标注点 -->
+        <div class="spot-marker" style="left: 7%; top: 15%;" onclick="selectSpot(0)">0</div>
+        <div class="spot-marker" style="left: 15%; top: 43%;" onclick="selectSpot(1)">1</div>
+        <div class="spot-marker" style="left: 26%; top: 10%;" onclick="selectSpot(2)">2</div>
+        <div class="spot-marker" style="left: 16%; top: 76%;" onclick="selectSpot(3)">3</div>
+        <div class="spot-marker" style="left: 25%; top: 76%;" onclick="selectSpot(4)">4</div>
+        <div class="spot-marker" style="left: 30%; top: 76%;" onclick="selectSpot(5)">5</div>
+        <div class="spot-marker" style="left: 53%; top: 76%;" onclick="selectSpot(6)">6</div>
+        <div class="spot-marker" style="left: 75%; top: 72%;" onclick="selectSpot(7)">7</div>
+        <div class="spot-marker" style="left: 66%; top: 12%;" onclick="selectSpot(8)">8</div>
+    </div>
+</div>
 
-    if (!COZE_TOKEN || !COZE_BOT_ID) {
-        return res.status(500).json({ error: "环境变量缺失：请检查 COZE_API_TOKEN 与 COZE_BOT_ID" });
-    }
+    <div id="panel-control">
+        <div class="audio-bar">
+            <div class="audio-info">
+                <span id="spot-title">🔊 请点击地图点位开启讲解</span>
+            </div>
+            <button class="play-btn" id="play-trigger" onclick="toggleAudio()" disabled>播放</button>
+            <audio id="global-player" style="display: none;"></audio>
+        </div>
 
-    try {
-        // 使用 chat/completions 同步接口，一次POST直接拿到答案，不需要二次轮询
-        const resp = await fetch("https://api.coze.cn/v3/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${COZE_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                bot_id: COZE_BOT_ID,
-                user_id: "user_" + Math.random().toString(36).substring(2, 9),
-                messages: [
-                    {
-                        role: "user",
-                        content: question,
-                        content_type: "text"
-                    }
-                ],
-                stream: false
-            })
-        });
+        <div class="chat-section">
+            <div class="chat-box" id="ai-bubble">
+                🔮 <b>法老密示：</b><br>游客，点击地图上的金色徽章即可聆听史诗。若有历史疑问，尽管在此向我发问……
+            </div>
+            <div class="chat-input-wrap">
+                <input type="text" id="user-question" placeholder="向法老拉美西斯二世提问..." onkeypress="handleKeyPress(event)">
+                <button onclick="askPharaoh()">提问</button>
+            </div>
+        </div>
+    </div>
 
-        const data = await resp.json();
+    <script>
+        const spotNames = {
+            0: "0号点：序曲",
+            1: "1号点：尼罗河登陆视角：神迹初现",
+            2: "2号点：四尊拉美西斯巨像：我的化身",
+            3: "3号点：门楣与战斗浮雕：帝国的石刻宣言",
+            4: "4号点：奥西里斯柱厅：踏入神域",
+            5: "5号点：第二柱厅与祭祀空间：凡人的边界",
+            6: "6号点：圣所：宇宙的终点",
+            7: "7号点：日照奇迹：跨越三千年的计算",
+            8: "8号点：奈菲尔塔莉小神庙：给王后的礼物"
+        };
 
-        if(data.code !== 0){
-            return res.status(500).json({
-                error:"扣子调用失败",
-                cozeError: data
-            })
+        let currentSpotId = null;
+        const player = document.getElementById("global-player");
+        const playBtn = document.getElementById("play-trigger");
+
+        function selectSpot(id) {
+            currentSpotId = id;
+            
+            document.querySelectorAll(".spot-marker").forEach((el, index) => {
+                if (index === id) el.classList.add("active");
+                else el.classList.remove("active");
+            });
+
+            document.getElementById("spot-title").innerText = spotNames[id];
+            playBtn.removeAttribute("disabled");
+            playBtn.innerText = "播放";
+
+            player.src = `audio/${id}.mp3`;
+            player.play().then(() => {
+                playBtn.innerText = "暂停";
+            }).catch(e => console.log("用户需交互后播放"));
+
+            document.getElementById("ai-bubble").innerHTML = `🔮 <b>法老密示：</b><br>你已抵达【${spotNames[id]}】。听完我的低语，如果还有不解之谜，写在下方问我。`;
         }
 
-        //提取assistant回答
-        let answerText = "";
-        if(data.data && Array.isArray(data.data.messages)){
-            const assistantMsg = data.data.messages.find(m => m.role === "assistant");
-            if(assistantMsg) answerText = assistantMsg.content;
+        function toggleAudio() {
+            if (currentSpotId === null) return;
+            if (player.paused) {
+                player.play();
+                playBtn.innerText = "暂停";
+            } else {
+                player.pause();
+                playBtn.innerText = "播放";
+            }
         }
 
-        if(!answerText){
-            return res.status(500).json({error:"未获取模型回答",cozeError:data});
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') askPharaoh();
         }
 
-        return res.status(200).json({
-            success:true,
-            answer: answerText
-        });
+        async function askPharaoh() {
+            const input = document.getElementById("user-question");
+            const bubble = document.getElementById("ai-bubble");
+            const question = input.value.trim();
 
-    } catch (err) {
-        return res.status(500).json({
-            error: "服务器异常",
-            message: err.message
-        });
-    }
-};
+            if (!question) return;
+
+            input.value = "";
+            bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
+
+            try {
+                const contextQuestion = currentSpotId !== null 
+                    ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
+                    : question;
+
+                const res = await fetch(`/api/chat?question=${encodeURIComponent(contextQuestion)}`);
+                const data = await res.json();
+
+                if (data.answer) {
+                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>${data.answer}`;
+                } else {
+                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>风沙太大，未听清你的言语，请再试一次。`;
+                }
+            } catch (error) {
+                console.error(error);
+                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
+            }
+        }
+
+        // 注册 PWA 离线服务
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('离线导览系统准备就绪！'))
+                    .catch(err => console.log('离线注册失败:', err));
+            });
+        }
+    </script>
+</body>
+</html>
