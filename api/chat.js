@@ -18,14 +18,14 @@ module.exports = async function handler(req, res) {
     if (!COZE_TOKEN || !COZE_BOT_ID) {
         return res.status(500).json({ error: "环境变量缺失：请检查 COZE_API_TOKEN 与 COZE_BOT_ID" });
     }
-
+    // 全部接口统一使用这套请求头，避免漏写Authorization
     const HEADERS = {
         "Authorization": `Bearer ${COZE_TOKEN}`,
         "Content-Type": "application/json"
     };
 
     try {
-        //1 创建对话
+        // 1. 创建对话任务
         const createChat = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: HEADERS,
@@ -53,17 +53,17 @@ module.exports = async function handler(req, res) {
         const chat_id = chatCreateRes.data.id;
         const conversation_id = chatCreateRes.data.conversation_id;
 
-        //2 轮询retrieve接口，不再调用message/list
+        // 2.轮询
         let chatResult;
         const maxPoll = 15;
         for (let i = 0; i < maxPoll; i++) {
-            await new Promise(r => setTimeout(r,700));
-            const poll = await fetch(`https://api.coze.cn/v3/chat/retrieve?conversation_id=${conversation_id}&chat_id=${chat_id}`,{
+            await new Promise(r => setTimeout(r, 700));
+            const poll = await fetch(`https://api.coze.cn/v3/chat/retrieve?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
                 headers: HEADERS
             });
             chatResult = await poll.json();
-            if(chatResult.code!==0) break;
-            if(chatResult.data.status !== "in_progress") break;
+            if (chatResult.code !== 0) break;
+            if (chatResult.data.status !== "in_progress") break;
         }
 
         if (chatResult.code !== 0) {
@@ -73,13 +73,23 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 直接从retrieve返回结果拿assistant消息，绕开message/list接口
-        const messages = chatResult.data.messages || [];
-        const assistantMsg = messages.find(m => m.role === "assistant");
+        // 3.获取消息列表
+        const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
+            headers: HEADERS
+        });
+        const msgData = await msgResp.json();
+        if (msgData.code !== 0) {
+            return res.status(500).json({
+                error: "获取消息列表失败",
+                cozeError: msgData
+            });
+        }
+
+        const assistantMsg = msgData.data.messages.find(m => m.role === "assistant");
         let answerText = assistantMsg ? assistantMsg.content : "";
 
         if (!answerText) {
-            return res.status(500).json({ error: "未获取模型回答", raw: chatResult });
+            return res.status(500).json({ error: "未获取模型回答", raw: msgData });
         }
 
         return res.status(200).json({
