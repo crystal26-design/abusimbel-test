@@ -21,90 +21,49 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // 创建对话，关闭stream
-        const createChatResp = await fetch("https://api.coze.cn/v3/chat", {
+        // 使用 chat/completions 同步接口，一次POST直接拿到答案，不需要二次轮询
+        const resp = await fetch("https://api.coze.cn/v3/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${COZE_TOKEN}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                "bot_id": COZE_BOT_ID,
-                "user_id": "user_" + Math.random().toString(36).substring(2, 9),
-                "additional_messages": [
+                bot_id: COZE_BOT_ID,
+                user_id: "user_" + Math.random().toString(36).substring(2, 9),
+                messages: [
                     {
-                        "role": "user",
-                        "content": question,
-                        "content_type": "text"
+                        role: "user",
+                        content: question,
+                        content_type: "text"
                     }
                 ],
-                "auto_save_history": true,
-                "stream": false
+                stream: false
             })
         });
 
-        const createData = await createChatResp.json();
-        if (createData.code !== 0 || !createData.data) {
+        const data = await resp.json();
+
+        if(data.code !== 0){
             return res.status(500).json({
-                error: "扣子创建对话失败",
-                cozeError: createData
-            });
+                error:"扣子调用失败",
+                cozeError: data
+            })
         }
-        const chatId = createData.data.id;
-        const conversationId = createData.data.conversation_id;
 
+        //提取assistant回答
         let answerText = "";
-        let finished = false;
-        const maxPoll = 40;
-
-        for (let i = 0; i < maxPoll; i++) {
-            await new Promise(r => setTimeout(r, 600));
-
-            // 同时带上 conversation_id + chat_id 两个参数
-            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversationId}&chat_id=${chatId}`, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${COZE_TOKEN}`
-                }
-            });
-
-            const msgData = await msgResp.json();
-            if (msgData.code !== 0) {
-                return res.status(500).json({
-                    error: "获取消息列表失败",
-                    cozeError: msgData
-                });
-            }
-
-            const messageList = msgData.data || [];
-            for (const m of messageList) {
-                if (m.role === "assistant" && m.type === "answer" && m.content) {
-                    answerText = m.content;
-                }
-            }
-
-            const chatInfo = messageList.find(item => item.type === "chat");
-            if (chatInfo && chatInfo.status === "completed") {
-                finished = true;
-                break;
-            }
-            if (chatInfo && chatInfo.status === "failed") {
-                return res.status(500).json({
-                    error: "机器人对话执行失败",
-                    cozeError: msgData
-                });
-            }
+        if(data.data && Array.isArray(data.data.messages)){
+            const assistantMsg = data.data.messages.find(m => m.role === "assistant");
+            if(assistantMsg) answerText = assistantMsg.content;
         }
 
-        if (!finished) {
-            return res.status(504).json({ error: "对话超时，请重新提问" });
-        }
-        if (!answerText) {
-            return res.status(500).json({ error: "未获取到机器人回复" });
+        if(!answerText){
+            return res.status(500).json({error:"未获取模型回答",cozeError:data});
         }
 
         return res.status(200).json({
-            success: true,
+            success:true,
             answer: answerText
         });
 
