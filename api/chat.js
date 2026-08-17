@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // 1. 创建对话任务 正确接口 POST /v3/chat
+        // 1. 创建对话任务
         const createChat = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: {
@@ -48,20 +48,20 @@ module.exports = async function handler(req, res) {
                 cozeError: chatCreateRes
             });
         }
+        // ⚠️这里取出两个ID，两个都要用！
         const chat_id = chatCreateRes.data.id;
+        const conversation_id = chatCreateRes.data.conversation_id;
 
-        // 2. 轮询最多15次，等待对话完成
-        let answerText = "";
+        // 2. 轮询最多15次，等待对话完成，两个参数全部带上
         let chatResult;
         const maxPoll = 15;
         for (let i = 0; i < maxPoll; i++) {
             await new Promise(r => setTimeout(r, 700));
-            const poll = await fetch(`https://api.coze.cn/v3/chat/retrieve?chat_id=${chat_id}`, {
+            const poll = await fetch(`https://api.coze.cn/v3/chat/retrieve?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
                 headers: { "Authorization": `Bearer ${COZE_TOKEN}` }
             });
             chatResult = await poll.json();
             if (chatResult.code !== 0) break;
-            // 不是进行中就退出轮询
             if (chatResult.data.status !== "in_progress") break;
         }
 
@@ -72,8 +72,8 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        // 读取消息列表
-        const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?chat_id=${chat_id}`, {
+        // 3. 获取消息列表，同样带上两个id
+        const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
             headers: { "Authorization": `Bearer ${COZE_TOKEN}` }
         });
         const msgData = await msgResp.json();
@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
 
         // 提取assistant回复
         const assistantMsg = msgData.data.messages.find(m => m.role === "assistant");
-        if (assistantMsg) answerText = assistantMsg.content;
+        let answerText = assistantMsg ? assistantMsg.content : "";
 
         if (!answerText) {
             return res.status(500).json({ error: "未获取模型回答", raw: msgData });
