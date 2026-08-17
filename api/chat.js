@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
     };
 
     try {
-        // 1 创建对话任务
+        //1 创建对话任务
         const createResp = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: HEADERS,
@@ -68,14 +68,21 @@ module.exports = async function handler(req, res) {
             return res.status(500).json({ error: "轮询查询对话失败", cozeError: chatResult });
         }
 
-        //3 调用message/list拿消息列表
+        //3 请求消息列表，增加严格判空，不直接 .find
         const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
             headers: HEADERS
         });
         const msgData = await msgResp.json();
 
+        // 重点：先把原始返回直接吐出来，不再直接访问 .messages
         if (msgData.code !== 0) {
             return res.status(500).json({ error: "获取消息列表失败", cozeError: msgData });
+        }
+        if (!msgData.data || !Array.isArray(msgData.data.messages)) {
+            return res.status(500).json({
+                error: "message/list 返回数据异常",
+                raw_msg_response: msgData
+            });
         }
 
         const assistantMsg = msgData.data.messages.find(item => item.role === "assistant");
