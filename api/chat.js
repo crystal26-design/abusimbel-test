@@ -68,13 +68,12 @@ module.exports = async function handler(req, res) {
             return res.status(500).json({ error: "轮询查询对话失败", cozeError: chatResult });
         }
 
-        //3 请求消息列表，增加严格判空，不直接 .find
+        //3 请求消息列表
         const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
             headers: HEADERS
         });
         const msgData = await msgResp.json();
 
-        // 重点：先把原始返回直接吐出来，不再直接访问 .messages
         if (msgData.code !== 0) {
             return res.status(500).json({ error: "获取消息列表失败", cozeError: msgData });
         }
@@ -85,9 +84,10 @@ module.exports = async function handler(req, res) {
             });
         }
 
-        const assistantMsg = msgData.data.messages.find(item => item.role === "assistant");
+        // 重点！增加 type === "answer" 过滤，拿到真正AI输出
+        const assistantMsg = msgData.data.messages.find(item => item.role === "assistant" && item.type === "answer");
         if (!assistantMsg) {
-            return res.status(500).json({ error: "未找到AI回复消息", raw: msgData });
+            return res.status(500).json({ error: "未找到AI回答消息", raw: msgData });
         }
 
         return res.status(200).json({
