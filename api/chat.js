@@ -70,12 +70,13 @@ module.exports = async function handler(req, res) {
         let retryTimes = 0;
         const MAX_RETRY = 3;
         while (retryTimes < MAX_RETRY) {
-            // ✅重点修复：POST请求，body传递chat_id，不要GET拼接url
+            // ✅POST body同时传入 chat_id + conversation_id
             const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list`, {
                 method: "POST",
                 headers: HEADERS,
                 body: JSON.stringify({
-                    chat_id: chat_id
+                    chat_id: chat_id,
+                    conversation_id: conversation_id
                 })
             });
             msgData = await msgResp.json();
