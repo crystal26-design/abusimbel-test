@@ -2,27 +2,26 @@ module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
-
     const question = req.query.question || (req.body && req.body.question);
     if (!question) {
         return res.status(400).json({ error: '提问内容不能为空' });
     }
-
     const COZE_TOKEN = process.env.COZE_API_TOKEN;
     const COZE_BOT_ID = process.env.COZE_BOT_ID;
-
     if (!COZE_TOKEN || !COZE_BOT_ID) {
         return res.status(500).json({ error: "环境变量缺失" });
     }
-
     const HEADERS = {
         "Authorization": `Bearer ${COZE_TOKEN}`,
         "Content-Type": "application/json"
     };
+
+    function sleep(ms) {
+        return new Promise(r => setTimeout(r, ms));
+    }
 
     try {
         //1 创建对话任务
@@ -42,12 +41,10 @@ module.exports = async function handler(req, res) {
                 ]
             })
         });
-
         const chatCreateRes = await createResp.json();
         if (chatCreateRes.code !== 0) {
             return res.status(500).json({ error: "创建对话失败", cozeError: chatCreateRes });
         }
-
         const chat_id = chatCreateRes.data.id;
         const conversation_id = chatCreateRes.data.conversation_id;
 
@@ -55,7 +52,7 @@ module.exports = async function handler(req, res) {
         let chatResult;
         const maxPoll = 15;
         for (let i = 0; i < maxPoll; i++) {
-            await new Promise(r => setTimeout(r, 700));
+            await sleep(700);
             const pollResp = await fetch(`https://api.coze.cn/v3/chat/retrieve?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
                 headers: HEADERS
             });
@@ -68,32 +65,39 @@ module.exports = async function handler(req, res) {
             return res.status(500).json({ error: "轮询查询对话失败", cozeError: chatResult });
         }
 
-        //3 请求消息列表
-        const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
-            headers: HEADERS
-        });
-        const msgData = await msgResp.json();
-
-        if (msgData.code !== 0) {
-            return res.status(500).json({ error: "获取消息列表失败", cozeError: msgData });
+        // ==========修复点：chat完成后先延时，再加message/list重试逻辑==========
+        await sleep(600);
+        let msgData = null;
+        let retryTimes = 0;
+        const MAX_RETRY = 3;
+        while (retryTimes < MAX_RETRY) {
+            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
+                headers: HEADERS
+            });
+            msgData = await msgResp.json();
+            // code=0 并且 data是数组，代表拿到合法消息，跳出重试
+            if (msgData.code === 0 && Array.isArray(msgData.data)) {
+                break;
+            }
+            retryTimes++;
+            await sleep(500);
         }
-        // 关键修复：msgData.data 本身就是消息数组，不是 {messages:[]} 对象
-        if (!Array.isArray(msgData.data)) {
+
+        // 多次重试依然异常
+        if (msgData.code !== 0 || !Array.isArray(msgData.data)) {
             return res.status(500).json({
-                error: "message/list 返回数据异常",
+                error: "message/list 返回数据异常，多次重试失败",
                 raw_msg_response: msgData
             });
         }
-        const messages = msgData.data;
 
+        const messages = msgData.data;
         const assistantMsg = messages.find(item => item.role === "assistant" && item.type === "answer");
         if (!assistantMsg) {
             return res.status(500).json({ error: "未找到AI回答消息", raw: msgData });
         }
-
         //兼容 content为空取reasoning_content
         const answerText = assistantMsg.content?.trim() || assistantMsg.reasoning_content;
-
         return res.status(200).json({
             success: true,
             answer: answerText
