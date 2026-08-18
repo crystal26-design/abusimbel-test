@@ -65,27 +65,29 @@ module.exports = async function handler(req, res) {
             return res.status(500).json({ error: "轮询查询对话失败", cozeError: chatResult });
         }
 
-        // chat完成后加长等待，给数据库写入时间
         await sleep(900);
         let msgData = null;
         let retryTimes = 0;
         const MAX_RETRY = 3;
         while (retryTimes < MAX_RETRY) {
-            // ✅修复接口地址：v3/message/list，只传chat_id，不带conversation_id
-            const msgResp = await fetch(`https://api.coze.cn/v3/message/list?chat_id=${chat_id}`, {
-                headers: HEADERS
+            // ✅重点修复：POST请求，body传递chat_id，不要GET拼接url
+            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list`, {
+                method: "POST",
+                headers: HEADERS,
+                body: JSON.stringify({
+                    chat_id: chat_id
+                })
             });
             msgData = await msgResp.json();
             if (msgData.code === 0 && Array.isArray(msgData.data)) {
                 break;
             }
             retryTimes++;
-            await sleep(800); //拉长重试间隔
+            await sleep(800);
         }
 
-        // 重试完毕判断
+        // 重试完毕判断，降级返回
         if (msgData.code !== 0 || !Array.isArray(msgData.data)) {
-            // 降级：不抛500错误，返回友好提示，前端可以提示用户重新提问
             return res.status(200).json({
                 success: false,
                 error: "扣子后端消息同步延迟，请重新提问",
