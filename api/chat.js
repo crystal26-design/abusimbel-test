@@ -41,13 +41,13 @@ module.exports = async function handler(req, res) {
             })
         });
 
-        // SSE响应头
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
         const reader = cozeResp.body.getReader();
-        const decoder = new TextDecoder("utf‑8");
+        // ✅修复：使用英文短横 utf-8
+        const decoder = new TextDecoder("utf-8");
 
         while (true) {
             const { done, value } = await reader.read();
