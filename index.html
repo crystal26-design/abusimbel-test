@@ -150,14 +150,11 @@
     </style>
 </head>
 <body>
-
     <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
-
    <div id="map-container">
     <div class="map-wrapper" style="position: relative; display: inline-block; width: 100%;">
         <!-- 图片 -->
         <img id="hand-drawn-map" src="images/map.jpg.png" alt="神庙手绘地图">
-
         <!-- 9个标注点 -->
         <div class="spot-marker" style="left: 7%; top: 15%;" onclick="selectSpot(0)">0</div>
         <div class="spot-marker" style="left: 15%; top: 43%;" onclick="selectSpot(1)">1</div>
@@ -170,16 +167,14 @@
         <div class="spot-marker" style="left: 66%; top: 12%;" onclick="selectSpot(8)">8</div>
     </div>
 </div>
-
     <div id="panel-control">
         <div class="audio-bar">
             <div class="audio-info">
                 <span id="spot-title">🔊 请点击地图点位开启讲解</span>
             </div>
             <button class="play-btn" id="play-trigger" onclick="toggleAudio()" disabled>播放</button>
-            <audio id="global-player" style="display: none;"></audio>
+            <audio id="global-player" style="display: none;">
         </div>
-
         <div class="chat-section">
             <div class="chat-box" id="ai-bubble">
                 🔮 <b>法老密示：</b><br>游客，点击地图上的金色徽章即可聆听史诗。若有历史疑问，尽管在此向我发问……
@@ -190,7 +185,6 @@
             </div>
         </div>
     </div>
-
     <script>
         const spotNames = {
             0: "0号点：序曲",
@@ -203,8 +197,8 @@
             7: "7号点：日照奇迹：跨越三千年的计算",
             8: "8号点：奈菲尔塔莉小神庙：给王后的礼物"
         };
-
         let currentSpotId = null;
+        let eventSource = null; //保存sse连接，防止重复请求
         const player = document.getElementById("global-player");
         const playBtn = document.getElementById("play-trigger");
 
@@ -215,19 +209,15 @@
                 if (index === id) el.classList.add("active");
                 else el.classList.remove("active");
             });
-
             document.getElementById("spot-title").innerText = spotNames[id];
             playBtn.removeAttribute("disabled");
             playBtn.innerText = "播放";
-
             player.src = `audio/${id}.mp3`;
             player.play().then(() => {
                 playBtn.innerText = "暂停";
             }).catch(e => console.log("用户需交互后播放"));
-
             document.getElementById("ai-bubble").innerHTML = `🔮 <b>法老密示：</b><br>你已抵达【${spotNames[id]}】。听完我的低语，如果还有不解之谜，写在下方问我。`;
         }
-
         function toggleAudio() {
             if (currentSpotId === null) return;
             if (player.paused) {
@@ -238,38 +228,61 @@
                 playBtn.innerText = "播放";
             }
         }
-
         function handleKeyPress(e) {
             if (e.key === 'Enter') askPharaoh();
         }
 
-        async function askPharaoh() {
+        function askPharaoh() {
             const input = document.getElementById("user-question");
             const bubble = document.getElementById("ai-bubble");
+            const btn = input.nextElementSibling;
             const question = input.value.trim();
-
             if (!question) return;
 
+            // 关闭上一次残留SSE连接
+            if(eventSource){
+                eventSource.close();
+                eventSource = null;
+            }
+
             input.value = "";
+            input.disabled = true;
+            btn.disabled = true;
             bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
 
-            try {
-                const contextQuestion = currentSpotId !== null 
-                    ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
-                    : question;
+            const contextQuestion = currentSpotId !== null 
+                ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
+                : question;
+            
+            let fullAnswer = "";
+            const url = `/api/chat?question=${encodeURIComponent(contextQuestion)}`;
+            eventSource = new EventSource(url);
 
-                const res = await fetch(`/api/chat?question=${encodeURIComponent(contextQuestion)}`);
-                const data = await res.json();
-
-                if (data.answer) {
-                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>${data.answer}`;
-                } else {
-                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>风沙太大，未听清你的言语，请再试一次。`;
+            eventSource.onmessage = function(e){
+                try{
+                    const obj = JSON.parse(e.data);
+                    if(obj.type === "answer"){
+                        fullAnswer += obj.content;
+                        bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
+                    }
+                    if(obj.type === "complete"){
+                        eventSource.close();
+                        eventSource = null;
+                        input.disabled = false;
+                        btn.disabled = false;
+                    }
+                }catch(err){
+                    //心跳ping包直接跳过
                 }
-            } catch (error) {
-                console.error(error);
+            };
+
+            eventSource.onerror = function(){
                 bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
-            }
+                eventSource.close();
+                eventSource = null;
+                input.disabled = false;
+                btn.disabled = false;
+            };
         }
 
         // 注册 PWA 离线服务
