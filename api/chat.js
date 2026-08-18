@@ -65,28 +65,30 @@ module.exports = async function handler(req, res) {
             return res.status(500).json({ error: "轮询查询对话失败", cozeError: chatResult });
         }
 
-        // ==========修复点：chat完成后先延时，再加message/list重试逻辑==========
-        await sleep(600);
+        // chat完成后加长等待，给数据库写入时间
+        await sleep(900);
         let msgData = null;
         let retryTimes = 0;
         const MAX_RETRY = 3;
         while (retryTimes < MAX_RETRY) {
-            const msgResp = await fetch(`https://api.coze.cn/v3/chat/message/list?conversation_id=${conversation_id}&chat_id=${chat_id}`, {
+            // ✅修复接口地址：v3/message/list，只传chat_id，不带conversation_id
+            const msgResp = await fetch(`https://api.coze.cn/v3/message/list?chat_id=${chat_id}`, {
                 headers: HEADERS
             });
             msgData = await msgResp.json();
-            // code=0 并且 data是数组，代表拿到合法消息，跳出重试
             if (msgData.code === 0 && Array.isArray(msgData.data)) {
                 break;
             }
             retryTimes++;
-            await sleep(500);
+            await sleep(800); //拉长重试间隔
         }
 
-        // 多次重试依然异常
+        // 重试完毕判断
         if (msgData.code !== 0 || !Array.isArray(msgData.data)) {
-            return res.status(500).json({
-                error: "message/list 返回数据异常，多次重试失败",
+            // 降级：不抛500错误，返回友好提示，前端可以提示用户重新提问
+            return res.status(200).json({
+                success: false,
+                error: "扣子后端消息同步延迟，请重新提问",
                 raw_msg_response: msgData
             });
         }
@@ -94,9 +96,12 @@ module.exports = async function handler(req, res) {
         const messages = msgData.data;
         const assistantMsg = messages.find(item => item.role === "assistant" && item.type === "answer");
         if (!assistantMsg) {
-            return res.status(500).json({ error: "未找到AI回答消息", raw: msgData });
+            return res.status(200).json({
+                success: false,
+                error: "未找到AI回答消息，请重新提问",
+                raw: msgData
+            });
         }
-        //兼容 content为空取reasoning_content
         const answerText = assistantMsg.content?.trim() || assistantMsg.reasoning_content;
         return res.status(200).json({
             success: true,
