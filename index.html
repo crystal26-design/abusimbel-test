@@ -231,61 +231,71 @@
             if (e.key === 'Enter') askPharaoh();
         }
         function askPharaoh() {
-            const input = document.getElementById("user-question");
-            const bubble = document.getElementById("ai-bubble");
-            const btn = input.nextElementSibling;
-            const question = input.value.trim();
-            if (!question) return;
-            // 关闭上一次残留SSE连接
-            if(eventSource){
-                eventSource.close();
-                eventSource = null;
-            }
-            input.value = "";
-            input.disabled = true;
-            btn.disabled = true;
-            bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
-            const contextQuestion = currentSpotId !== null 
-                ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
-                : question;
-            
-            let fullAnswer = "";
-            const url = `/api/chat?question=${encodeURIComponent(contextQuestion)}`;
-            eventSource = new EventSource(url);
-            eventSource.onmessage = function(e){
-                try{
-                    const obj = JSON.parse(e.data);
-                    // 扣子新版：回答内容放在 reasoning_content，content为空
-                    if(obj.type === "answer"){
-                        fullAnswer += obj.reasoning_content;
-                        bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
-                    }
-                    if(obj.type === "complete"){
-                        eventSource.close();
-                        eventSource = null;
-                        input.disabled = false;
-                        btn.disabled = false;
-                    }
-                }catch(err){
-                    //心跳、verbose事件直接跳过
+    const input = document.getElementById("user-question");
+    const bubble = document.getElementById("ai-bubble");
+    const btn = input.nextElementSibling;
+    const question = input.value.trim();
+    if (!question) return;
+
+    if(eventSource){
+        eventSource.close();
+        eventSource = null;
+    }
+    input.value = "";
+    input.disabled = true;
+    btn.disabled = true;
+    bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
+
+    const contextQuestion = currentSpotId !== null
+        ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
+        : question;
+
+    let fullAnswer = "";
+    const url = `/api/chat?question=${encodeURIComponent(contextQuestion)}`;
+    eventSource = new EventSource(url);
+
+    // ✅重点：扣子SSE自定义事件，必须addEventListener，不要用onmessage拿回答
+    eventSource.addEventListener("conversation.message.delta", function(e){
+        try {
+            const obj = JSON.parse(e.data);
+            if(obj.type === "answer"){
+                // reasoning_content 累加，浏览器自动处理utf8
+                if(obj.reasoning_content){
+                    fullAnswer += obj.reasoning_content;
+                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
                 }
-            };
-            //捕获扣子返回的chat失败事件（额度耗尽等）
-            eventSource.addEventListener('conversation.chat.failed', function(){
-                bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。`;
-                eventSource.close();
-                eventSource = null;
-                input.disabled = false;
-                btn.disabled = false;
-            });
-            eventSource.onerror = function(){
-                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
-                eventSource.close();
-                eventSource = null;
-                input.disabled = false;
-                btn.disabled = false;
-            };
+            }
+        } catch(err) {
+            console.log("delta解析跳过",err);
         }
+    });
+
+    // 对话结束事件
+    eventSource.addEventListener("conversation.chat.completed", function(){
+        eventSource.close();
+        eventSource = null;
+        input.disabled = false;
+        btn.disabled = false;
+    });
+
+    // 失败事件
+    eventSource.addEventListener('conversation.chat.failed', function(){
+        bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。`;
+        eventSource.close();
+        eventSource = null;
+        input.disabled = false;
+        btn.disabled = false;
+    });
+
+    // 网络异常
+    eventSource.onerror = function(){
+        bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
+        eventSource.close();
+        eventSource = null;
+        input.disabled = false;
+        btn.disabled = false;
+    };
+}
         // 注册 PWA 离线服务
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
