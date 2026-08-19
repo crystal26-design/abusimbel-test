@@ -13,37 +13,40 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: "环境变量缺失" });
     }
 
-    // ========== 新增接口：获取最终回答 ==========
+    // ========== 获取最终回答 【修复接口地址+改为GET】 ==========
     if (req.query.action === "getReply") {
         const { chat_id, conversation_id } = req.query;
         try {
-            const msgResp = await fetch("https://api.coze.cn/v3/message/list", {
-                method: "POST",
+            // ✅正确接口，GET，参数放url query，不要body、不要POST
+            const url = `https://api.coze.cn/v3/chat/message/list?chat_id=${encodeURIComponent(chat_id)}&conversation_id=${encodeURIComponent(conversation_id)}`;
+            const msgResp = await fetch(url, {
+                method: "GET",
                 headers: {
                     "Authorization": `Bearer ${COZE_TOKEN}`,
                     "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    chat_id: chat_id,
-                    conversation_id: conversation_id
-                })
+                }
             });
             const json = await msgResp.json();
+
             if (json.code !== 0) {
-                return res.status(400).json({ error: "拉取消息失败", raw: json });
+                //任务还在思考，返回pending，不要返回400
+                return res.status(200).json({ pending: true });
             }
-            // 找bot输出的type=answer消息
+            // 寻找bot的answer消息
             const botMsg = json.data.find(item => item.type === "answer");
             if (!botMsg) {
-                return res.status(400).json({ error: "未找到模型回答" });
+                //模型还没产出正式回答
+                return res.status(200).json({ pending: true });
             }
-            return res.status(200).json({ answer: botMsg.content });
+            return res.status(200).json({ pending:false, answer: botMsg.content });
+
         } catch (err) {
-            return res.status(500).json({ error: "服务器异常", msg: err.message });
+            //网络异常，标记pending继续轮询
+            return res.status(200).json({ pending: true });
         }
     }
 
-    // ========== 原有chat会话创建逻辑 ==========
+    // ========== 创建chat会话逻辑 ==========
     const question = req.query.question || (req.body && req.body.question);
     if (!question) {
         return res.status(400).json({ error: '提问内容不能为空' });
@@ -73,7 +76,6 @@ module.exports = async function handler(req, res) {
         if (chatJson.code !== 0) {
             return res.status(400).json({ error: "扣子调用失败", cozeError: chatJson });
         }
-        // 返回 chat_id、conversation_id 交给前端
         return res.status(200).json({
             chat_id: chatJson.data.id,
             conversation_id: chatJson.data.conversation_id
