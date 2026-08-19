@@ -27,19 +27,19 @@ module.exports = async function handler(req, res) {
         const cozeResp = await fetch("https://api.coze.cn/v3/chat", {
             method: "POST",
             headers: HEADERS,
-            body: JSON.stringify({
-                bot_id: COZE_BOT_ID,
-                user_id: "user_" + Date.now(),
-                stream: true,
-                additional_messages: [
-                    {
-                        role: "user",
-                        content: question,
-                        content_type: "text"
-                    }
-                ]
-            })
-        });
+            const cozeBody = {
+    bot_id: COZE_BOT_ID,
+    user_id: "user_" + Date.now(),
+    stream: true,
+    thinking_type: "disabled", // ✅新增这一行！强制关闭深度思考
+    additional_messages: [
+        {
+            role: "user",
+            content: question,
+            content_type: "text"
+        }
+    ]
+};
 
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
