@@ -1,7 +1,6 @@
 module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
 res.setHeader('Cache-Control', 'no-cache');
-res.setHeader('Connection', 'keep‑alive');
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
