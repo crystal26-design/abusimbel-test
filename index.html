@@ -256,19 +256,19 @@
 
     // ✅重点：扣子SSE自定义事件，必须addEventListener，不要用onmessage拿回答
     eventSource.addEventListener("conversation.message.delta", function(e){
-        try {
-            const obj = JSON.parse(e.data);
-            if(obj.type === "answer"){
-                // reasoning_content 累加，浏览器自动处理utf8
-                if(obj.reasoning_content){
-                    fullAnswer += obj.reasoning_content;
-                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
-                }
+    try {
+        const obj = JSON.parse(e.data);
+        if(obj.type === "answer"){
+            // 只取正式输出content，完全忽略reasoning_content思考草稿
+            if(obj.content){
+                fullAnswer += obj.content;
+                bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
             }
-        } catch(err) {
-            console.log("delta解析跳过",err);
         }
-    });
+    } catch(err) {
+        console.log("delta解析跳过",err);
+    }
+});
 
     // 对话结束事件
     eventSource.addEventListener("conversation.chat.completed", function(){
