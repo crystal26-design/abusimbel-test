@@ -228,7 +228,7 @@
             if (e.key === 'Enter') askPharaoh();
         }
 
-        async function askPharaoh() {
+                async function askPharaoh() {
             const input = document.getElementById("user-question");
             const bubble = document.getElementById("ai-bubble");
             const btn = input.nextElementSibling;
@@ -258,15 +258,25 @@
                 }
                 const {chat_id, conversation_id} = createJson;
 
-                // 2. 轮询拉取回答，每1200ms请求一次
+                // 2. 轮询拉取回答，每1200ms请求一次，增加最大轮询上限，防止无限轰炸接口
+                let pollCount = 0;
+                const MAX_POLL = 8;
                 pollingTimer = setInterval(async ()=>{
+                    pollCount++;
                     try{
                         const replyRes = await fetch(`/api/chat?action=getReply&chat_id=${encodeURIComponent(chat_id)}&conversation_id=${encodeURIComponent(conversation_id)}`);
                         const replyJson = await replyRes.json();
-                        if(replyRes.ok && replyJson.answer){
-                            //拿到正式回答，结束轮询
+
+                        // 任务完成并且拿到答案
+                        if(!replyJson.pending && replyJson.answer){
                             clearInterval(pollingTimer);
                             bubble.innerHTML = `🔮 <b>法老密示：</b><br>${replyJson.answer}`;
+                            releaseInput();
+                        }
+                        // 超过最大轮询次数，直接超时退出
+                        if(pollCount >= MAX_POLL){
+                            clearInterval(pollingTimer);
+                            bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿思考超时，请简短提问再试。`;
                             releaseInput();
                         }
                     }catch(err){
