@@ -40,11 +40,12 @@
             justify-content: center;
             align-items: center;
         }
-        #hand-drawn-map {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
+        /* 🎯 地图图片元素 */
+#hand-drawn-map {
+    width: 100%;
+    height: auto;
+    display: block;
+}
         .spot-marker {
             position: absolute;
             width: 20px;
@@ -152,7 +153,9 @@
     <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
    <div id="map-container">
     <div class="map-wrapper" style="position: relative; display: inline-block; width: 100%;">
+        <!-- 图片 -->
         <img id="hand-drawn-map" src="images/map.jpg.png" alt="神庙手绘地图">
+        <!-- 9个标注点 -->
         <div class="spot-marker" style="left: 7%; top: 15%;" onclick="selectSpot(0)">0</div>
         <div class="spot-marker" style="left: 15%; top: 43%;" onclick="selectSpot(1)">1</div>
         <div class="spot-marker" style="left: 27%; top: 8%;" onclick="selectSpot(2)">2</div>
@@ -195,12 +198,14 @@
             8: "8号点：奈菲尔塔莉小神庙：给王后的礼物"
         };
         let currentSpotId = null;
-        let pollingTimer = null; //轮询定时器
+        let eventSource = null;
+        let fullAnswer = ""; //全局保存回答文本
         const player = document.getElementById("global-player");
         const playBtn = document.getElementById("play-trigger");
 
         function selectSpot(id) {
             currentSpotId = id;
+            
             document.querySelectorAll(".spot-marker").forEach((el, index) => {
                 if (index === id) el.classList.add("active");
                 else el.classList.remove("active");
@@ -227,16 +232,19 @@
         function handleKeyPress(e) {
             if (e.key === 'Enter') askPharaoh();
         }
-
-                async function askPharaoh() {
+        function askPharaoh() {
             const input = document.getElementById("user-question");
             const bubble = document.getElementById("ai-bubble");
             const btn = input.nextElementSibling;
             const question = input.value.trim();
             if (!question) return;
 
-            // 清除旧轮询
-            if(pollingTimer) clearInterval(pollingTimer);
+            // 关闭上一次SSE连接，解决只能第一问
+            if(eventSource){
+                eventSource.close();
+                eventSource = null;
+            }
+            fullAnswer = ""; //每次新提问清空回答缓存
 
             input.value = "";
             input.disabled = true;
@@ -247,57 +255,53 @@
                 ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
                 : question;
 
-            try {
-                // 1. 创建会话，拿到chat_id conversation_id
-                const createRes = await fetch(`/api/chat?question=${encodeURIComponent(contextQuestion)}`);
-                const createJson = await createRes.json();
-                if(!createRes.ok || createJson.error){
-                    bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。`;
-                    releaseInput();
-                    return;
-                }
-                const {chat_id, conversation_id} = createJson;
+            const url = `/api/chat?question=${encodeURIComponent(contextQuestion)}`;
+            eventSource = new EventSource(url);
 
-                // 2. 轮询拉取回答，每1200ms请求一次，增加最大轮询上限，防止无限轰炸接口
-                let pollCount = 0;
-                const MAX_POLL = 8;
-                pollingTimer = setInterval(async ()=>{
-                    pollCount++;
-                    try{
-                        const replyRes = await fetch(`/api/chat?action=getReply&chat_id=${encodeURIComponent(chat_id)}&conversation_id=${encodeURIComponent(conversation_id)}`);
-                        const replyJson = await replyRes.json();
-
-                        // 任务完成并且拿到答案
-                        if(!replyJson.pending && replyJson.answer){
-                            clearInterval(pollingTimer);
-                            bubble.innerHTML = `🔮 <b>法老密示：</b><br>${replyJson.answer}`;
-                            releaseInput();
+            eventSource.addEventListener("conversation.message.delta", function(e){
+                try {
+                    const obj = JSON.parse(e.data);
+                    if(obj.type === "answer"){
+                        // 当前模型bug content为空，临时读取reasoning_content输出
+                        const textChunk = obj.content || obj.reasoning_content || "";
+                        if(textChunk){
+                            fullAnswer += textChunk;
+                            bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
                         }
-                        // 超过最大轮询次数，直接超时退出
-                        if(pollCount >= MAX_POLL){
-                            clearInterval(pollingTimer);
-                            bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿思考超时，请简短提问再试。`;
-                            releaseInput();
-                        }
-                    }catch(err){
-                        console.log("轮询中，任务还未完成");
                     }
-                },1200);
+                } catch(err) {
+                    console.log("delta解析跳过",err);
+                }
+            });
 
-            } catch (err) {
+            // 对话正常结束
+            eventSource.addEventListener("conversation.chat.completed", function(){
+                safeClose();
+            });
+
+            // AI调用失败
+            eventSource.addEventListener('conversation.chat.failed', function(){
+                bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。`;
+                safeClose();
+            });
+
+            // SSE网络出错
+            eventSource.onerror = function(){
                 bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
-                releaseInput();
+                safeClose();
+            };
+
+            function safeClose(){
+                if(eventSource){
+                    eventSource.close();
+                    eventSource = null;
+                }
+                input.disabled = false;
+                btn.disabled = false;
             }
         }
 
-        function releaseInput(){
-            if(pollingTimer) clearInterval(pollingTimer);
-            pollingTimer = null;
-            document.getElementById("user-question").disabled = false;
-            document.querySelector(".chat-input-wrap button").disabled = false;
-        }
-
-        // PWA
+        // 注册 PWA 离线服务
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
