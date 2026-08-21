@@ -32,3 +32,7 @@ async function sendAuthChat(userMessage) {
 
   return await response.json();
 }
+// 网页一加载完毕，立刻检查并弹窗要邀请码
+window.addEventListener('DOMContentLoaded', () => {
+  getInviteCode();
+});
