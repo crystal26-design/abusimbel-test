@@ -310,5 +310,22 @@
             });
         }
     </script>
+    <!-- 在 </body> 前引入新文件 -->
+<script src="invite-auth.js"></script>
+
+<script>
+  // 你原本按钮点击发送消息的地方，改成这样调用：
+  async function handleSend() {
+    const inputMessage = "介绍一下黄道十二宫"; // 用户的提问文本
+    
+    // 一行代码调用我们刚刚新建的文件函数
+    const data = await sendAuthChat(inputMessage);
+    
+    if (data) {
+      console.log("AI 回答内容：", data);
+      // 接下来正常展示你的 Coze AI 回答即可
+    }
+  }
+</script>
 </body>
 </html>
