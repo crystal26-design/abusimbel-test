@@ -5,233 +5,552 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>阿布辛贝神庙·智能语音导览</title>
     <style>
-        :root {
-            --gold: #d4af37;
-            --dark: #1a1510;
-            --sand: #f4eae1;
-        }
+        :root { --gold: #d4af37; --dark: #1a1510; --sand: #f4eae1; }
+        * { box-sizing: border-box; }
         body {
-            margin: 0;
-            padding: 0;
+            margin: 0; padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--dark);
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            background-color: var(--dark); color: #fff;
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
         header {
-            background-color: rgba(0, 0, 0, 0.85);
-            text-align: center;
-            padding: 12px 0;
-            border-bottom: 2px solid var(--gold);
-            font-size: 1.1rem;
-            font-weight: bold;
-            color: var(--gold);
-            letter-spacing: 2px;
+            background-color: rgba(0,0,0,0.85); text-align: center; padding: 12px 0;
+            border-bottom: 2px solid var(--gold); font-size: 1.1rem; font-weight: bold;
+            color: var(--gold); letter-spacing: 2px; flex-shrink: 0;
         }
         #map-container {
-            flex: 1;
-            position: relative;
-            background: #2a221b;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            flex: 1; position: relative; background: #2a221b; overflow: hidden;
+            display: flex; justify-content: center; align-items: center; min-height: 0;
+            touch-action: none; /* 手势交给 JS 处理，避免与浏览器缩放/滚动冲突 */
         }
-        /* 🎯 地图图片元素 */
-#hand-drawn-map {
-    width: 100%;
-    height: auto;
-    display: block;
-}
+        #hand-drawn-map { width: 100%; height: auto; display: block; }
         .spot-marker {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background-color: rgba(212, 175, 55, 0.9);
-            border: 2px solid #fff;
-            color: var(--dark);
+            position: absolute; width: 15px; height: 15px;
+            background-color: rgba(212,175,55,0.92); border: 1px solid #fff;
+            color: var(--dark); border-radius: 50%; display: flex;
+            justify-content: center; align-items: center; font-weight: bold;
+            font-size: 8px; line-height: 1; cursor: pointer;
+            box-shadow: 0 0 6px rgba(212,175,55,.85);
+            transform: translate(-50%,-50%); transition: transform .2s, background-color .2s;
+            z-index: 10; -webkit-tap-highlight-color: transparent;
+        }
+        /* 透明加大热区：视觉 15px，手指可点范围约 30px */
+        .spot-marker::after {
+            content: ""; position: absolute; left: 50%; top: 50%;
+            width: 30px; height: 30px; transform: translate(-50%,-50%);
             border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-weight: bold;
-            font-size: 11px;
-            cursor: pointer;
-            box-shadow: 0 0 15px var(--gold);
-            transform: translate(-50%, -50%);
-            transition: all 0.3s;
-            z-index: 10;
         }
         .spot-marker.active {
-            background-color: #ff4500;
-            box-shadow: 0 0 25px #ff4500;
-            transform: translate(-50%, -50%) scale(1.2);
+            background-color: #ff4500; border-color: #fff;
+            box-shadow: 0 0 12px #ff4500; z-index: 20;
+            transform: translate(-50%,-50%) scale(1.6);
         }
-        #panel-control {
-            background-color: rgba(26, 21, 16, 0.95);
-            border-top: 2px solid var(--gold);
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            max-height: 45vh;
-            overflow-y: auto;
+        /* ===== 缩放/拖动：复位按钮 ===== */
+        #zoom-reset {
+            position: absolute; top: 10px; right: 10px; z-index: 30;
+            width: 34px; height: 34px; border-radius: 50%;
+            border: 1px solid var(--gold); background: rgba(0,0,0,.65);
+            color: var(--gold); font-size: 16px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            -webkit-tap-highlight-color: transparent;
         }
+        /* ===== 语音播放条 ===== */
         .audio-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 10px 15px;
-            border-radius: 8px;
-            border-left: 4px solid var(--gold);
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(255,255,255,0.05); padding: 10px 12px;
+            border-radius: 8px; border-left: 4px solid var(--gold);
         }
-        .audio-info {
-            font-size: 0.9rem;
-            color: var(--sand);
-        }
+        .audio-meta { flex: 1; min-width: 0; }
+        #spot-title { display: block; font-size: .92rem; color: var(--sand);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #spot-sub { display: block; font-size: .72rem; color: #9a8a6a; margin-top: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .play-btn {
-            background-color: var(--gold);
-            border: none;
-            color: var(--dark);
-            padding: 6px 15px;
-            border-radius: 20px;
-            font-weight: bold;
-            cursor: pointer;
+            background-color: var(--gold); border: none; color: var(--dark);
+            padding: 8px 16px; border-radius: 20px; font-weight: bold; cursor: pointer;
+            flex-shrink: 0;
         }
-        .play-btn:disabled {
-            background-color: #555;
-            color: #888;
-            cursor: not-allowed;
+        .play-btn:disabled { background-color: #555; color: #888; cursor: not-allowed; }
+        .speed-btn {
+            background: rgba(212,175,55,0.15); border: 1px solid var(--gold);
+            color: var(--gold); padding: 6px 10px; border-radius: 20px;
+            font-weight: bold; cursor: pointer; flex-shrink: 0; font-size: .85rem;
         }
-        .chat-section {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        .audio-time { font-size: .75rem; color: #9a8a6a; flex-shrink: 0; }
+        .audio-track { flex: 2; min-width: 60px; height: 4px; background: rgba(255,255,255,.15);
+            border-radius: 2px; cursor: pointer; position: relative; }
+        .audio-track .played { position: absolute; left: 0; top: 0; bottom: 0;
+            background: var(--gold); border-radius: 2px; width: 0; }
+        /* ===== 提示文字 ===== */
+        .empty-tip { color: #7a6c52; font-size: .82rem; text-align: center; padding: 18px 0; }
+        /* ===== 问答区 ===== */
+        .chat-section { display: flex; flex-direction: column; gap: 8px; }
         .chat-box {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(214, 175, 55, 0.3);
-            border-radius: 8px;
-            padding: 12px;
-            min-height: 70px;
-            max-height: 140px;
-            overflow-y: auto;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            color: #ddd;
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(212,175,55,.3);
+            border-radius: 8px; padding: 12px; min-height: 60px; max-height: 130px;
+            overflow-y: auto; font-size: .88rem; line-height: 1.5; color: #ddd;
         }
-        .chat-input-wrap {
-            display: flex;
-            gap: 8px;
-        }
+        .chat-input-wrap { display: flex; gap: 8px; }
         .chat-input-wrap input {
-            flex: 1;
-            background: #2b231a;
-            border: 1px solid var(--gold);
-            border-radius: 20px;
-            padding: 8px 15px;
-            color: #fff;
-            outline: none;
-            font-size: 0.9rem;
+            flex: 1; background: #2b231a; border: 1px solid var(--gold);
+            border-radius: 20px; padding: 8px 15px; color: #fff; outline: none; font-size: .9rem;
         }
         .chat-input-wrap button {
-            background: var(--gold);
-            border: none;
-            color: var(--dark);
-            border-radius: 20px;
-            padding: 8px 20px;
-            font-weight: bold;
-            cursor: pointer;
+            background: var(--gold); border: none; color: var(--dark);
+            border-radius: 20px; padding: 8px 20px; font-weight: bold; cursor: pointer;
+        }
+        /* ===== 照片灯箱（上方）+ 播放条（下方）+ 文字讲解 ===== */
+        #spot-modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 999;
+            display: flex; flex-direction: column; justify-content: flex-end;
+            opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s ease;
+        }
+        #spot-modal.show { opacity: 1; visibility: visible; }
+        .modal-body {
+            max-height: 92vh; display: flex; flex-direction: column;
+            padding: 12px 12px 16px; gap: 10px; overflow: hidden;
+            transform: translateY(20px); transition: transform .25s ease;
+        }
+        #spot-modal.show .modal-body { transform: translateY(0); }
+        .photo-frame {
+            flex: 1; min-height: 0; display: flex; justify-content: center;
+            align-items: center; position: relative;
+        }
+        .photo-frame img {
+            max-width: 100%; max-height: 100%; object-fit: contain;
+            border: 2px solid var(--gold); border-radius: 10px;
+            box-shadow: 0 0 40px rgba(212,175,55,.45); background: #000;
+        }
+        /* 无图时的预留占位 */
+        .photo-placeholder {
+            width: 100%; height: 100%; border: 2px dashed rgba(212,175,55,.45);
+            border-radius: 10px; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; gap: 8px; color: #7a6c52;
+            background: rgba(212,175,55,0.04);
+        }
+        .photo-placeholder .ph-icon { font-size: 2.2rem; }
+        #modal-close {
+            position: absolute; top: 14px; right: 14px; width: 36px; height: 36px;
+            border-radius: 50%; border: 1px solid var(--gold); background: rgba(0,0,0,.7);
+            color: var(--gold); font-size: 20px; cursor: pointer; z-index: 10;
+            display: flex; justify-content: center; align-items: center;
+        }
+        #modal-title { color: var(--gold); font-size: 1rem; font-weight: bold;
+            text-align: center; letter-spacing: 1px; flex-shrink: 0; }
+        #modal-sub { color: #9a8a6a; font-size: .74rem; text-align: center; flex-shrink: 0;
+            margin-top: -6px; }
+        /* 弹层内的文字讲解（可展开） */
+        .modal-transcript {
+            flex: 0 1 auto; min-height: 0; max-height: 26vh; overflow-y: auto;
+            background: rgba(26,21,16,.95); border: 1px solid rgba(212,175,55,.3);
+            border-radius: 8px; padding: 10px 12px; font-size: .85rem;
+            line-height: 1.65; color: #ddd;
+        }
+        .modal-audio {
+            flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+            background: rgba(26,21,16,.97); border-top: 1px solid rgba(212,175,55,.35);
+            padding: 10px 12px; border-radius: 8px;
         }
     </style>
 </head>
 <body>
+    <script src="./invite-auth.js"></script>
+
     <header>🏛️ 阿布辛贝神庙·智能语音微导览</header>
-   <div id="map-container">
-    <div class="map-wrapper" style="position: relative; display: inline-block; width: 100%;">
-        <!-- 图片 -->
-        <img id="hand-drawn-map" src="images/map.jpg.jpg" alt="神庙手绘地图">
-        <!-- 9个标注点 -->
-        <div class="spot-marker" style="left: 7%; top: 15%;" onclick="selectSpot(0)">0</div>
-        <div class="spot-marker" style="left: 15%; top: 43%;" onclick="selectSpot(1)">1</div>
-        <div class="spot-marker" style="left: 27%; top: 8%;" onclick="selectSpot(2)">2</div>
-        <div class="spot-marker" style="left: 16%; top: 76%;" onclick="selectSpot(3)">3</div>
-        <div class="spot-marker" style="left: 24%; top: 77%;" onclick="selectSpot(4)">4</div>
-        <div class="spot-marker" style="left: 32%; top: 77%;" onclick="selectSpot(5)">5</div>
-        <div class="spot-marker" style="left: 47%; top: 77%;" onclick="selectSpot(6)">6</div>
-        <div class="spot-marker" style="left: 66%; top: 71%;" onclick="selectSpot(7)">7</div>
-        <div class="spot-marker" style="left: 58%; top: 12%;" onclick="selectSpot(8)">8</div>
+
+    <div id="map-container">
+        <div class="map-wrapper" style="position:relative;display:inline-block;width:100%;">
+            <img id="hand-drawn-map" src="images/abusimbel.png" alt="阿布辛贝神庙平面图"
+                 onerror="this.style.display='none';document.getElementById('map-fallback').style.display='flex';">
+            <div id="map-fallback" style="display:none;position:absolute;inset:0;flex-direction:column;justify-content:center;align-items:center;color:#7a6c52;gap:8px;">
+                <div style="font-size:2rem;">🗺️</div>
+                <div>平面图待放置：images/abusimbel.png</div>
+            </div>
+            <!-- 17 个标注点（0–16，坐标为参考动线，请按实际平面图微调） -->
+            <div class="spot-marker" data-spot="0" style="left:50%; top:90%;" onclick="selectSpot(0)">0</div>
+            <div class="spot-marker" data-spot="1" style="left:50%; top:82%;" onclick="selectSpot(1)">1</div>
+            <div class="spot-marker" data-spot="2" style="left:41%; top:80%;" onclick="selectSpot(2)">2</div>
+            <div class="spot-marker" data-spot="3" style="left:63%; top:80%;" onclick="selectSpot(3)">3</div>
+            <div class="spot-marker" data-spot="4" style="left:50%; top:74%;" onclick="selectSpot(4)">4</div>
+            <div class="spot-marker" data-spot="5" style="left:50%; top:68%;" onclick="selectSpot(5)">5</div>
+            <div class="spot-marker" data-spot="6" style="left:50%; top:61%;" onclick="selectSpot(6)">6</div>
+            <div class="spot-marker" data-spot="7" style="left:33%; top:60%;" onclick="selectSpot(7)">7</div>
+            <div class="spot-marker" data-spot="8" style="left:50%; top:52%;" onclick="selectSpot(8)">8</div>
+            <div class="spot-marker" data-spot="9" style="left:67%; top:57%;" onclick="selectSpot(9)">9</div>
+            <div class="spot-marker" data-spot="10" style="left:50%; top:41%;" onclick="selectSpot(10)">10</div>
+            <div class="spot-marker" data-spot="11" style="left:30%; top:26%;" onclick="selectSpot(11)">11</div>
+            <div class="spot-marker" data-spot="12" style="left:22%; top:21%;" onclick="selectSpot(12)">12</div>
+            <div class="spot-marker" data-spot="13" style="left:22%; top:15%;" onclick="selectSpot(13)">13</div>
+            <div class="spot-marker" data-spot="14" style="left:70%; top:36%;" onclick="selectSpot(14)">14</div>
+            <div class="spot-marker" data-spot="15" style="left:50%; top:12%;" onclick="selectSpot(15)">15</div>
+            <div class="spot-marker" data-spot="16" style="left:79%; top:60%;" onclick="selectSpot(16)">16</div>
+        </div>
+        <button id="zoom-reset" onclick="resetZoom()" title="复位">⤢</button>
     </div>
-</div>
+
     <div id="panel-control">
         <div class="audio-bar">
-            <div class="audio-info">
-                <span id="spot-title">🔊 请点击地图点位开启讲解</span>
+            <div class="audio-meta">
+                <span id="spot-title">🔊 请点击地图上的金色圆点开启讲解</span>
+                <span id="spot-sub"></span>
             </div>
             <button class="play-btn" id="play-trigger" onclick="toggleAudio()" disabled>播放</button>
-            <audio id="global-player" style="display: none;">
+            <audio id="global-player" style="display:none;"></audio>
         </div>
         <div class="chat-section">
             <div class="chat-box" id="ai-bubble">
-                🔮 <b>法老密示：</b><br>游客，点击地图上的金色徽章即可聆听史诗。若有历史疑问，尽管在此向我发问……
+                🔮 <b>法老密示：</b><br>游客，点击地图上的金色圆点即可聆听三千年的石头说话。若有历史疑问，尽管在此向我发问……
             </div>
             <div class="chat-input-wrap">
-                <input type="text" id="user-question" placeholder="向法老拉美西斯二世提问..." onkeypress="handleKeyPress(event)">
+                <input type="text" id="user-question" placeholder="向埃及考古讲解员提问..." onkeypress="handleKeyPress(event)">
                 <button onclick="askPharaoh()">提问</button>
             </div>
         </div>
     </div>
+
+    <!-- ============ 点位详情弹层：图片(或预留位) + 播放条 + 文字讲解 ============ -->
+    <div id="spot-modal" onclick="closeModal(event)">
+        <button id="modal-close" onclick="closeModal(null,true)">&times;</button>
+        <div class="modal-body" onclick="event.stopPropagation()">
+            <div>
+                <div id="modal-title"></div>
+                <div id="modal-sub"></div>
+            </div>
+            <div class="photo-frame" id="photo-frame"></div>
+            <div class="modal-audio">
+                <button class="play-btn" id="modal-play" onclick="toggleAudio()">播放</button>
+                <div class="audio-track" id="modal-track" onclick="seekAudio(event)"><div class="played" id="modal-played"></div></div>
+                <span class="audio-time" id="modal-time">--:-- / --:--</span>
+                <button class="speed-btn" id="speed-btn" onclick="cycleSpeed()">1.0x</button>
+            </div>
+            <div class="modal-transcript" id="modal-transcript"></div>
+        </div>
+    </div>
+
     <script>
-        const spotNames = {
-            0: "0号点：序曲",
-            1: "1号点：尼罗河登陆视角：神迹初现",
-            2: "2号点：四尊拉美西斯巨像：我的化身",
-            3: "3号点：门楣与战斗浮雕：帝国的石刻宣言",
-            4: "4号点：奥西里斯柱厅：踏入神域",
-            5: "5号点：第二柱厅与祭祀空间：凡人的边界",
-            6: "6号点：圣所：宇宙的终点",
-            7: "7号点：日照奇迹：跨越三千年的计算",
-            8: "8号点：奈菲尔塔莉小神庙：给王后的礼物"
+        /* ===== 17 个点位数据（按参观动线编号）：编号 / 中文名 / 英文名（搜图用）/ 文字版讲解 ===== */
+        const SPOTS = {
+        0: { cn: "总讲解：一个努比亚之夜", en: "Abu Simbel Great Temple of Ramesses II · Introduction", text: "三千三百多年前，一个没有月亮的夜晚。几位努比亚使者沿着尼罗河往北走，奉命去向埃及宫廷致意。他们听说过埃及的国王不好惹，但心里并不服气——毕竟这里是努比亚，是他们的土地。\n绕过一道山崖，火把忽然全灭了——不是风，是人。几个使者不约而同跪下，把头埋进沙里。\n在他们头顶，四张脸正从山体里浮出来。二十米高，比任何一座努比亚神庙都大得多，眉眼在火光里忽明忽暗。中间那道门像一张漆黑的嘴；再往上，一排狒狒举着手，朝着东方，朝着还没升起的太阳。\n那是上下埃及之王的像，是我。我的登基名念作\"拉之真理即力量\"，人们叫我拉美西斯——那一年，我还不到三十岁。\n我先说说自己后来干了什么，你才知道这座庙为什么这么大。\n我在位约六十七年，是古埃及在位最久的法老之一，活到九十岁上下，生了一百多个子女。登基时我接手的，是一个刚经历过动荡的国家——那时我要做的就是两件事：把国家重新撑起来，并让所有人相信这件事。\n对内我大修营建：扩建底比斯的卡纳克与卢克索神庙，修王陵，建新都\"培尔-拉美西斯\"，把尼罗河三角洲变成新的权力中心。对外我打了一连串仗，最著名的是卡迭石，但真正影响深远的是我没打赢之后的选择——跟赫梯人缔结和约，还娶了他们的公主。这份和约，是历史上最早有文本留存的和平条约之一。\n我留下的建筑多到考古学家至今列不完：阿布辛贝、阿拜多斯、卡纳克柱厅……后人干脆把我的名字刻满了埃及，有学者开玩笑说，我不是在修神庙，就是在去修神庙的路上。\n而这一座，是我所有作品里最\"咬牙\"的一件——因为它不是盖的，是从一座山里凿出来的。\n为什么在这荒凉的边境凿它？我的答案很直接：这里是从南方进入埃及的口子。我要让每一个过路的人，在还没开口说话之前，就先记住我的脸。\n这座庙，我献给三位大神——阿蒙-拉、拉-哈拉赫提、卜塔；还有一位，我不打算谦虚：我自己。北边那座小庙，献给了哈索尔女神，也献给了我的妻子奈菲尔塔利。\n我还给它装了一套\"机关\"：每年两天，太阳会穿过六十多米深的大厅，直直照进最里面的石室。三千多年了，它一直准时。\n后来呢？我死了，埃及亡了，这座庙还在。直到1960年代，人们要修阿斯旺高坝，尼罗河要涨起来——这座庙眼看要沉进水底。几十个国家凑钱出人，把它切成一千多块巨石，搬到高处重新拼起来。1968年9月22日，神庙在新家\"重新开张\"。\n所以今天你来看它，看的是两样东西：三千三百年前古埃及工匠凿出来的奇迹，还有五十多年前全人类把它捞回来的奇迹。\n在你们走上去之前，我还得先交代一件事——这座庙，曾经被沙子埋了两千五百年。\n沙埋得比你想象的彻底。早在公元前六世纪，希腊雇佣兵路过这里时，沙已经堆到巨像的膝盖；他们干脆在我腿上刻了一段\"到此一游\"，今天还看得见。之后沙子年年添，把立面下半截、大门、连同里面的所有通道，一起封死。到十九世纪，四尊巨像里只有一颗头还露在沙面上，另一颗头已经断了，剩下两尊只露出王冠的尖顶。\n1813年3月，一个瑞士人叫布尔克哈特，本来是去看北边那座小庙的，回程路上多绕了一步，突然撞见四个半埋在沙里的脑袋。他猜这是一座大神庙的门面——他猜对了，但他进不去。\n四年后，意大利人贝尔佐尼带人挖了二十来天，才从一条缝里钻进去。火把点起来的那一刻，他看到的是一座从未被打开过的神庙，浮雕上的颜色还是亮的。\n再过十几年，商博良来了，入口又被沙堵死了。他把衣服脱到只剩内衣，趴在地上从一个洞里挤进去，他在信里写：\"我以为自己钻进了一个火炉口。\"里面五十二度，他靠蜡烛把全部浮雕看了两个半小时。\n一直到十九世纪末，埃及文物局在马斯佩罗主持下把门口的积沙彻底清干净，这座庙才第一次完整地站到阳光下——从凿成到真正\"出土\"，中间隔了三千两百年。所以你们今天能这么轻松地走进去，是有人替你们挖了二十五年的沙、也挖了一百年的沙。" },
+        1: { cn: "正立面：四尊巨像", en: "Abu Simbel Facade & the Four Colossi", text: "先抬头，把这四张脸看完。我知道你们要拍照，但先别急，我有几句话要说。\n这四尊像，每尊约二十米，全是我，全是坐姿，戴着上下埃及的双王冠——那是我统治两片土地的凭证。双手平放膝上，眼睛看向东方：尼罗河，日出的方向。我不是在\"坐着休息\"，我是在宣布：我就是这片土地的门。\n注意看底座侧面——刻着尼罗河神把莲花和纸莎草绑在一起，那是上下埃及的\"合并仪式\"；再往下，是一排被捆住的俘虏，一边是非洲人，一边是亚洲人。这套组合的意思，我也不藏着：上面的神把国家交给我，下面的敌人已经被绑好了。\n从正面看，四尊像几乎一模一样，这就是我要的效果：重复产生威严，像一排士兵。但你走近看，头饰与光影落点各有差别——那是我的工匠的小心思。\n还有一件事得说清楚：这四尊像不是\"雕好搬来\"的，是从这座山体里直接开凿出来的。整座神庙就是一座山，我没有另找石材，只是从山里\"请\"出了自己的脸。\n顺便说说你们最常问的一个问题：为什么是红的？ 这山是砂岩，砂岩里含着铁的矿物，被氧气和水慢慢\"锈\"成了红色的氧化铁，薄薄一层裹在石英沙粒上——你们看到的那种赭红、砖红、橙黄不匀的颜色，是石头自己长出来的。但更值得知道的是：三千年前它其实是彩色的。 墙面先抹一层薄灰泥，再上红赭石、黄赭石、蓝铜矿、孔雀石绿和炭黑；1817年贝尔佐尼第一次爬进来时，记下的还是\"鲜艳的蓝、红、黄、绿\"。你如今看到的这块红，是被三千年的太阳晒剩下的颜色——石头替我保留了一层，另一层被时间收走了。\n还有一点请你自己判断：这四尊像虽然都看着东方，但仔细看，最右边那一尊的嘴角、眼神，和左边几位略有不同。现代摄影师常发现，早上七点和中午十二点拍同一尊像，会得到两张\"性格不同\"的脸。我的工匠其实是在跟太阳合作——他们知道光会替他们完成最后的雕刻。\n现在，请靠近一点，看我膝盖旁边那几尊\"小人\"——下一站，我跟你仔细交代他们是谁。" },
+        2: { cn: "巨像脚下的王室小雕像：我的一家子", en: "Small Royal Statues at the Colossi Feet", text: "请看我的大腿处——这里站着几个人，高度都没超过我的膝盖。\n在古埃及的图像规矩里，个头就是地位：谁高，谁重要。这帮小家伙站得这么矮，不是他们不重要，是规矩不允许他们比我高。\n但他们的身份，一个都不轻。按通行的辨识，这些雕像包括：\n奈菲尔塔利——我的正妻，\"上下埃及之主\"的王后。她是我一生最看重的女人，等下你会在北边小庙看到她有多得意。\n图雅——我的母亲。老太太活到很老，在我即位后仍极有地位。她站在我腿边，是我在向所有人展示：王室的血液从哪儿来。\n阿蒙-赫-科普谢夫——我的长子，也是王储，名字意为\"阿蒙与他同在\"。可惜他走在我前面，最终没能即位。\n还有几位公主——宾塔娜特、巴克穆特、梅丽塔蒙、奈贝塔维、伊西诺弗雷特等。别小看她们：在我的王朝里，有几位公主后来成了王后、承担宗教职责，是王室里真正的实权角色。\n所以这一圈小雕像，其实是我的\"家庭合影\"。在神庙最显眼的地方，我没有只放自己，我把母亲、妻子、儿女都带上了——它既证明王室人丁兴旺，也证明继承有序。\n要说明的是：四尊巨像腿边的具体人物组合并不完全相同，学界对各像的辨识也有少量分歧。你在现场若看到某个位置的人像铭文与本稿说的不一致，以铭牌为准。\n再强调一次：他们的身形只有我的膝盖高，但站的每一寸位置，都是精算过的政治。" },
+        3: { cn: "倒塌的巨像：那一尊为什么没有头", en: "The Fallen Colossus, Abu Simbel", text: "现在往门口一侧看，第二尊——它没有头。\n准确说，它从胸肩往上都不在了：头颅、胸部、一部分手臂，碎块就躺在自己脚下。这是四尊里唯一\"下场\"不同的一尊。\n它为什么倒了？一场古代地震。学者根据损坏形态和碎石位置判断，这事发生得很早，久到古代来此旅行的人就已经看到它倒着——有古代旅客在附近石头上刻字，说他们见过一尊\"没有头\"的巨像。也就是说，它在\"被发现\"之前，已经倒了上千年。\n那为什么一直不修？\n第一，古代埃及人确实修过这座神庙。它大约在我死后不久遭过一次地震，后世的法老做过修复。但这一尊损坏太大，古人也只能\"止住继续塌\"，做不到完全复原。\n第二，也是更有意思的一点：1960年代搬迁时，工程队完全可以顺手把它拼回去，但他们没有。他们按发掘时的原位，把碎块留在基座脚边。\n这就带出一个值得想的问题：修好它，神庙更\"完整\"；不修它，神庙更\"真实\"。现代修复界选了后者——这尊倒下的像成了整座神庙唯一的\"疤痕\"，同时也是一份物证：证明这座山确实经历过地震，也证明神庙确实被搬过家。\n你也许想问：那碎掉的那个头，现在在哪？就在它膝前的沙地上躺着，脸朝上，眼睛还朝着尼罗河的方向——三千多年了，它一直保持着\"跌倒\"的姿势。附近还有几块胸部和手臂的残石，编号标记都还在。\n所以不必为它可惜。三尊站着的讲\"王的威严\"，这一尊倒下的讲\"时间\"。而你脚下这些装了编号的石头，讲的是\"人类不愿意让它消失\"这件事——三种叙事，同时摆在同一个平台上，这在全世界都少见。" },
+        4: { cn: "门楣上的太阳神：为什么在正中间", en: "Niche of Ra-Horakhty above the Entrance", text: "抬头，看大门正上方那个大壁龛。\n里面站着一位鹰首人身的神——拉-哈拉赫提。这个名字可以拆开：\"拉\"是太阳，\"哈拉赫提\"意为\"地平线上的荷鲁斯\"。所以他是太阳神与王权神的合体。\n为什么他偏偏站在正中间、门楣最上方？ 三个理由，我一个一个说。\n第一，轴向。 整座神庙中轴对称，大门、大厅、圣所全落在同一条线上。这条线的起点在哪？就是这个壁龛。他站的不是\"装饰位置\"，是这条轴的起点——太阳从这里进来，一路照到最深处。所以他的位置不是\"高\"，是\"源头\"。\n第二，他是太阳能量的供给者，也是王权的授予者。 在古埃及观念里，法老的统治合法性来自太阳神；而拉-哈拉赫提同时是\"地平线上的荷鲁斯\"——荷鲁斯是王位之神，每位在世的法老都是\"人间的荷鲁斯\"。把他放在门楣上，等于在神庙门口挂了块匾：这里的王权，由太阳盖章。\n第三，最妙的一点——他的名字里藏着我的名字。 看他手里：右手握着乌瑟符号，再加一根羽毛；左手托着真理与秩序女神玛阿特。三样合起来读出来，就是我的登基名——乌瑟玛阿特拉（\"拉之真理即力量\"）。\n这是一个\"象形文字谜题\"：表面上是一位神在展示权力，读出来却是我的名字。\n所以他站在门楣正中间，既在给我授权，也在替我签名。每年太阳照进来的那一瞬，其实是他\"念出\"了我的名字。" },
+        5: { cn: "顶端的狒狒：太阳的迎宾队", en: "Baboon Frieze on the Facade, Abu Simbel", text: "现在把视线从门楣再往上抬，到立面最顶上一排——那一串小雕像，共二十二只，都是狒狒，双手高举，朝着东方。\n为什么是狒狒？ 这有真实的动物行为依据：某些狒狒在黎明时会面朝日出方向高举前肢、高声叫唤，像在\"行礼\"。古埃及人天天看着这一幕，就认定它们是世上最先迎接太阳的生灵——太阳的第一批信徒。\n于是狒狒在宗教里有了固定角色：它们和清晨的太阳神\"凯普利\"（甲虫形，代表日出）绑定，被看作黎明的报信者、守门人。浮雕里常见的构图就是一群狒狒围成半圈、举手朝天，欢迎日轮升起。\n那为什么放在神庙最高处？ 因为它们迎接的是\"升起的太阳\"，而神庙最高的地方，正是太阳第一缕光会照到的地方。把这排迎宾队放在屋脊上，等于把黎明请进了建筑里——从这里开始，光一路往下、往里，穿过大门，穿过大厅，最后落到最深处那四尊神像上。狒狒是这条光路的起点。\n还有一个细节：二十二这个数字不是随手定的，它和古埃及的历法、仪式日程有关联；具体算法学者有不同解释，但显然是被计算过的。\n再看它们的姿态：双臂高举、手掌打开、脸朝东——不是\"投降\"，是\"迎接\"。有的版本里，它们还会被刻上面朝太阳神站立的姿态，像一支列队的仪仗。\n下次你在清晨六点站到这个平台上来，会看到真实的狒狒在附近岩壁上做同样的事：面朝东方，叫，然后太阳出来。三千三百年了，这套程序一直没变过——变的是人，是语言，是国界；没变的是狒狒和太阳。\n这一排小家伙看着可爱，其实是整座神庙\"日出程序\"的第一行代码。" },
+        6: { cn: "大柱厅：我就是承重柱", en: "Great Hypostyle Hall Osirid Pillars, Abu Simbel", text: "进门。光线会突然暗下来——别慌，这是设计好的。\n请看两侧的方形巨柱：八根，每根正面都贴着一尊我的立像。注意姿势——双手交叉抱在胸前，握着弯钩和连鞭。这叫\"奥西里斯式\"，是冥界之王奥西里斯的经典造型。\n为什么用这个姿势？因为奥西里斯代表\"死而复生、永恒不灭\"。我把自己刻成他，意思很直白：这个王朝不会结束，我会一直在。\n再看头顶：柱子上方撑着石梁，石梁上是天花板，画着展翼的秃鹫和星图。你的头顶上，就是一片被画出来的天空。\n留意一个细节：这八尊像戴的王冠不一样。一侧四尊戴的是上埃及白冠，另一侧戴的是上下埃及双冠。这不是工匠偷懒，是有意的\"政治分区\"——我用两套冠冕把大厅分成两半，提醒每个进来的人：这两片土地，都归我管。\n大厅两侧还有一排侧室，共六间，留到下一站单独讲，那里是神庙的\"仓库\"。\n还有一个容易忽略的细节：柱身上还留着施工的痕迹——有些地方的雕刻明显比别处浅，有些线条在中途改过方向。这不是败笔，这是\"施工日志\"：这座庙凿了约二十年，前后几代工匠接力，风格自然会有微差。\n先提醒一句：看看柱身、看看天花，再低头看看地面——这些全都是从一整座砂岩山里凿出来的。王的工匠没有混凝土、没有电动工具，只有铜凿、石锤和绳子。这个大厅，是他们一寸一寸\"抠\"出来的。\n还有个判断方法：这八根柱子其实是\"砍\"出来的——先在岩体上留出柱子的轮廓，再把周围的石头全部挖走，柱子就\"剩\"下来了。所以它们不是\"立\"在大厅里的，是大厅从它们周围被挖空了。" },
+        7: { cn: "侧室与库房：神庙的后台", en: "Side Chambers and Storerooms, Abu Simbel", text: "请看大厅两侧那几间小门洞——大柱厅两侧一共六间侧室，一边两间、一边四间，进深不大，装饰也比大厅粗糙。\n它们是干什么的？学界的主流看法是：储藏与后勤，所以常被叫作\"宝库\"或\"库房\"。但也有研究者提出，其中一部分可能与\"王位庆典\"（即位三十年庆典）相关活动有关——这两种说法并存，没有定论。\n具体存什么？按同类神庙的考古证据与墙面题记，这类房间通常存放：\n- 仪式器物：香炉、供桌、圣水容器、仪式用器皿；\n- 祭祀耗材：香料、油脂、酒、面包、花环；\n- 仪式文本与卷轴；\n- 神庙财物：金属器、织物、贡品。\n那墙上的画是什么？ 这一点必须说清楚：侧室浮雕不如大厅精致，主题也不是战争或神话大场面，而主要是向神献祭的常规场景，以及与仪式程序相关的内容。换句话说，这些墙不是\"故事墙\"，是\"流程说明书\"——它们配合房间里存放的器物，构成一套可执行的仪式系统。\n换个说法你就懂了：大厅是\"舞台\"，圣所是\"主机房\"，这些侧室是\"后台仓库和道具间\"。演员在台上光鲜，全靠后台把东西备齐。\n顺带一句：这些房间也说明神庙不只是\"祭祀场所\"，它同时是一个经济单位——有仓库、有账目、有进贡、有发放。整个帝国，就是靠一座座这样的神庙运转起来的。" },
+        8: { cn: "四柱厅：从战士变成祭司", en: "Second Hypostyle Hall / Four-pillared Hall", text: "再往里，是第二座大厅：只有四根柱子，尺度比前面小了一圈。\n这一厅的气质，和前厅完全不同。前厅墙上全是打仗；这里墙上全是我在敬神。\n看这几面墙：我手捧香炉为圣船熏香、向阿蒙-拉和拉-哈拉赫提献上酒、面包、花环；还有我与奈菲尔塔利一同出现在神圣的圣船两侧。前厅的我是战士，这里的我是祭司——一个人，两个身份，前后呼应。\n顺便处理一个很多人会问的问题：这四根柱子上，有没有我和奈菲尔塔利\"牵手\"的浮雕？ 答案是没有——不是我小气，是埃及人不用\"牵手\"表达亲密。他们表达的方式是并肩、同高、做同一件事：两人手臂交叠、互相扶肩、一起献祭、一起站在圣船两侧。你刚才在前厅看到的那些柱子，柱身上只有我一个人的立像；而我和王后真正\"同框\"的地方，是这一厅的墙上——圣船两侧，我们各占一边。记住这个判断标准，你再看埃及的夫妻像，就不会去找\"手\"了。\n为什么要这么排？因为神庙的空间逻辑是\"由外向内、由世俗向神圣\"。越往深处，我的角色就越接近\"人与神之间的中介\"。你在前厅看到的\"杀戮与征服\"，是给外面的人看的；在这里看到的\"供奉与敬拜\"，是给神看的。\n抬头看这四根柱子：柱身刻满了献祭场景，柱头做成了盛开的植物形态。相比前厅那些\"我的替身\"，这四根柱子更朴素，也更专注——它们不是为了炫耀，是为了撑住\"通往圣所的最后一段路\"。\n再留意地面：从大厅到这里的路面是一级级升高的。这是古埃及神庙的通用手法——地面越高、天花板越低、房间越小，人的身体感受就越\"被压迫\"，也就越接近神。走到圣所门口时，你会不自觉地放轻脚步，那不是因为你懂礼貌，是因为建筑在管你。\n这里还有两间小侧室，同样用于储藏与仪式准备。等你穿过这里，再经过一道前厅，就是整座神庙的终点——圣所。在那里，我不再站在柱子前面，我要和神并排坐在一起。" },
+        9: { cn: "卡迭石战役浮雕：一场打平的仗，被刻成了大胜", en: "Battle of Kadesh Reliefs, Abu Simbel", text: "现在请看大柱厅两侧的墙面——这是整座神庙最热闹的部分，也是拉美西斯二世一生最著名的一场战役：卡迭石。\n先讲真实的历史，不美化。这是即位第五年的事，约公元前1274年，对手是新兴的赫梯帝国，战场在奥龙特斯河畔的卡迭石城（今叙利亚境内）。我犯了兵家大忌——轻敌冒进：听信俘虏的口供，以为敌军还在远处，结果主力尚未集结，我带着前锋就一头撞进了赫梯全军设好的伏击圈。我差点死在战场上，靠着个人勇武和匆匆赶到的援军才收拾住局面。这一仗，实际打成平手。\n而你眼前的浮雕版本是这样的：我独自站在战车上，马拉满弓，箭无虚发；赫梯人成片翻车落水，敌军将领举手求饶；画面比例里我最大，敌人渺小如蝼蚁。\n这面墙具体刻了哪些场面？按通常的解读，可以依次找到：\n- 军营遇袭——赫梯战车冲进埃及营地，场面混乱；\n- 战前议事——我与将领围坐讨论对策；\n- 审讯间谍——两个赫梯人被捉住、按在地上打；\n- 我单骑冲锋——一个人冲入敌阵，这是整个叙事的高潮；\n- 敌军溃败与清点战果——统计被砍下的手掌、押送俘虏。\n这是一部完整的\"战争连环画\"，从危机到逆转，一条线讲完。\n关键要理解的是：这不是纪实，是宣传。 学者公认这一组浮雕的历史准确性很低——它服务于我的三个目的：向努比亚的属民和潜在对手示威；向国内证明我的勇武；向神证明我有资格得到庇佑。\n最有力的反证就在同一座神庙里：几年之后，我做的第一件事，是和赫梯人签和平条约，还娶了赫梯公主。立面角落那块\"婚姻石碑\"，记的就是这件事——它就在我们接下来要看的岩壁石龛里。\n所以看这面墙时，不妨这样想：它记录的不是战争，而是我希望你们怎样记住我。历史和宣传，在这座神庙里各占一半墙。" },
+        10: { cn: "内圣所：四尊神，和一年两次的太阳", en: "Sanctuary of Abu Simbel, Four Deities", text: "往里走，最后一道门。这里是整座神庙的终点，也是整座庙最得意的地方。\n先数人：四尊坐像并排，从左到右——\n卜塔：孟菲斯的创世神、工匠之神，常与黑暗和冥界相关。\n阿蒙-拉：底比斯的主神，帝国最重要的神。\n拉美西斯二世：对，就是我，戴着蓝冠，刻着自己的王名圈，坐在神的队伍里。\n拉-哈拉赫提：就是门口那位太阳神，在神庙尽头再次出现。\n三位正统神明，加一位\"凡人选手\"，四尊像一样大、一样高、坐在同一面墙上。这就是整座神庙的中心思想：王与神平等。\n顺便说个流传很广的说法：每年阳光照进来时，会照亮其余三尊，唯独\"跳过\"卜塔。这个说法在学界有争议——有人认为卜塔确实总偏暗，也有人认为那只是视觉印象。但作为现场体验它特别好用：连黑暗之神，都不参加这场太阳的加冕礼。\n再说那套\"机关\"：每年两天，阳光从正门射入，穿过柱厅、四柱厅、前厅，最后落在圣所的四尊像上。日期一般写作2月22日和10月22日，象征我的生日与加冕日——但必须提醒：这个\"生日/加冕日\"的解释，学界并没有确凿证据，属于流传最广的推断；资料里也有2月21日、10月21日的版本。\n还有一件事：1968年搬迁重组之后，这个日照现象依然发生，但日期据说比原来偏了一天左右——因为整体朝向无法和原址分毫不差。连太阳都记得，这座庙搬过家。\n最后请看一眼地上的祭坛基座，还有那块圣舟的底座浮雕。三千三百年前，每天清晨都有人在这里点香、换衣、奉食——对这间屋子里的神来说，这不是\"造了一座庙\"，而是给他们安排了三百年的日常。" },
+        11: { cn: "小神庙正立面：与我同高的王后", en: "Small Temple of Hathor, Facade & Colossi", text: "往北走一百来米，到另一座庙。\n先看正面：六尊约十米高的立像，两两一组分列大门两侧，排法是\"我、王后、我\"。请注意——奈菲尔塔利的像，和我几乎一样高。\n再看一个反差：这些像只有大庙巨像的一半高，但比例更\"秀气\"——她们不是坐在王座上压人，而是站着迎人。脚边还有孩子，小的只有真人膝盖那么高。\n这在古埃及极其罕见。刚才在大庙你亲眼见过规矩：王后只能站在我的膝盖边上。但在这座庙，我让她和我平起平坐。\n为什么？因为这座庙献给两位主角：哈索尔女神（爱、音乐、欢乐之神），以及奈菲尔塔利——她在这里不是\"王后\"，而是被神化的女王，接受供奉。庙的题记里说得很清楚：我为她，在努比亚凿了这座\"永恒之作\"；门上还有一句流传很广的话，大意是\"因为她，太阳才照临\"。\n看细节：奈菲尔塔利头戴哈索尔的牛角日轮冠，与女神形象合一；她站姿端庄，和我那种\"坐姿威严\"完全不同——更轻盈，更优雅。雕像脚边还有一群小雕像，是我和她的孩子们。\n再补充一个细节：这座庙的入口两侧刻着保护神庙的眼镜蛇，庙内还有专门的太阳庭院与托特神小礼拜堂。也就是说，这座小庙不只是\"爱情纪念品\"，它有完整的神学配置——哈索尔、王后、太阳，三套系统在这里合流。\n有人说阿布辛贝是我的\"自恋纪念碑\"。站在这里你可以自己判断：我确实自恋，但我也用一整座山，向一个女人表达过敬意。" },
+        12: { cn: "小神庙内部：女神、音乐与王后", en: "Small Temple of Hathor, Interior", text: "进门，第一个感觉：和大庙完全两种气质。那里是帝王史诗，这里像一间音乐厅——更小、更柔、更暖。\n抬头看柱头：刻着哈索尔的牛耳人脸，双面各一张，温柔地\"看着\"你。这种柱式叫\"哈索尔柱\"，基本只出现在献给她的神庙里。牛在古埃及象征丰饶与母性；牛耳人脸意味着女神在倾听——所以在这座庙里，连柱子都在听人说话。\n墙上没有战争，没有俘虏，全是献祭、奏乐、敬拜哈索尔的场景。奈菲尔塔利反复出现：向哈索尔献香、主持仪式、被神祝福。最深处的后墙上，她站在哈索尔与穆特两位女神之间——这个位置，在图像语言里意味着\"被神接纳\"。\n这里要提醒一句讲解纪律：别把这座庙讲成\"国王的爱情故事\"。它真正讲的是哈索尔与王后的神圣联结：王后借哈索尔获得神性，哈索尔借王后有了人间的面容。爱情只是这个故事的注脚，神学才是正文。" },
+        13: { cn: "小神庙内部：圣殿浮雕", en: "Sanctuary Reliefs of the Small Temple", text: "最深处的圣所里还有一件宝物：后墙上雕着一头从岩壁里\"走出来\"的神牛，那是哈索尔的化身，她护着下方的我。牛的下方还有一只秃鹫展开翅膀，护着王后的王名圈。这个构图很讲究：女神在上，我在她身前，王后的名字被护在牛身之下——三个人的关系，一层一层，一句话说清了。（对应的照片你在现场对一眼：神牛立于纸莎草小舟之中，牛前是我献祭的形象，牛下方的秃鹫展开双翼，罩着奈菲尔塔利的王名圈。）\n对比着看特别有意思：大庙最深处坐着的是我自己；这座庙最深处供奉的是哈索尔。一座庙里，我把自己升格为神；另一座庙里，我把最尊贵的位置让给了妻子和女神。" },
+        14: { cn: "迁移工程：把一座山切开，再拼回去", en: "Relocation of Abu Simbel, UNESCO", text: "回到开场那个努比亚之夜。\n1959年，埃及决定修阿斯旺高坝，库区将形成巨大的纳赛尔湖——这整片地方，包括这座庙，都会被淹。埃及和苏丹向联合国教科文组织求助。1960年3月8日，\"拯救努比亚古迹国际运动\"在巴黎启动，三十来个国家成立委员会，四十支技术团队从五大洲赶来。\n工程本身是这样的：1963年11月起，工人们用线锯把山体连同神庙一起切开，一千多块巨石，每块约三十吨，逐块编号、拍照、运走；然后在原址后方约一百八十米、高出约六十四米的地方，造了一座人工山崖，把石头一块块拼回去。1968年9月22日，神庙在新址落成。整个努比亚行动持续二十年，救下二十二处古迹，其中就包括你在菲莱看过的那座伊西斯神庙。\n站在这里，有三件事值得知道。\n第一，你脚下不是山。 这座\"山\"是混凝土砌出来的外壳，里面是一组巨大的圆顶结构，把拼好的神庙罩在里面。当年为了让它看起来像\"天然岩崖\"，工程师在外壳上做了仿岩纹理、调整了切口位置，把所有的接缝都藏在顶部的阴影里。所以你今天看不出破绽，不是运气，是设计。\n第二，但神庙本体是真的。 从浮雕到石纹，没有一块是复制品，全是三千三百年前的原件——连那尊倒下的巨像，碎块也是按发掘原位摆回去的。世界遗产的\"原真性\"原则在这里体现得非常典型：外壳可以是新的，本体必须是真的。\n第三，这件事改写了一个概念。 在这次行动之前，世界上没有\"文物整体搬迁\"的成熟先例。是阿布辛贝让人们第一次承认：一处古迹的价值，可以不依赖于它脚下的那块地。这个观念后来写进了《世界遗产公约》，也让威尼斯、吴哥、巴米扬的抢救有了依据。\n所以，努比亚行动真正的遗产，不只是救下二十二处古迹，而是发明了一套\"人类共同保管记忆\"的方法。" },
+        15: { cn: "门前那片水：从尼罗河到纳赛尔湖", en: "Lake Nasser in front of Abu Simbel", text: "现在，请转身看一眼脚下那片水。\n那是纳赛尔湖。但请记住：你现在看到的湖，三千年前并不存在。 古代这里是尼罗河的一条河道，神庙就开凿在河西岸的砂岩崖壁上，门前是河谷、是船码头，是商队上下的口岸。水位随季节涨落，洪水来时能漫到神庙台阶下面——这也是古埃及人把庙建在这个高度的原因之一：既贴着河，又不至于被淹。\n而这片湖是\"人造\"的：1960年代阿斯旺高坝合龙之后，河水被拦在上游，逐年上涨，形成了长约五百公里、横跨埃及与苏丹边境的巨大水库。埃及人管它叫纳赛尔湖，苏丹一侧叫努比亚湖。也就是说，你今天看到的\"湖光山色\"，是二十世纪才有的景观；而它也正是差点吞掉这两座神庙的那片水。\n再看细节：水离神庙有多近？你从停车场走到神庙台阶，只需几分钟——因为整座建筑是被\"抬\"到这片水面上方的。当年搬迁时，专家们还专门论证过：如果水库水位继续升高，这座人工山崖是否够高。最后确定的方案，是把神庙放在高出原来位置约六十四米、离岸一百八十米的地方，才算彻底安全。\n一个讽刺的对照：当年让神庙\"必须搬家\"的水，如今成了它的前景；当年为抢救而筑起的人工山崖，如今成了它的背景。拍照最好的角度，就在这片水边——把水、山、四张脸一起框进去，你能同时拍到\"毁灭者\"和\"救命者\"。\n也正因为它现在是\"湖\"，游览方式彻底变了。古代来朝圣的人，是从尼罗河上岸、走进河谷；今天来的人，多半是凌晨从阿斯旺出发的车队，或者落在沙漠里那座小机场的航班。风景变了，路也变了——唯一没变的，是走到平台前抬头那一下的震撼。\n最后说句题外话：如果时间允许，不妨在这儿住一晚。白天看的是石头，夜里看的是光影——游客散尽，幽月的残光洒落在静谧的湖上。广袤沙漠中，四尊像被灯一盏盏点亮，似乎在一点点揭开被风沙掩埋的古老过往，那感觉和白天完全不同。" },
+        16: { cn: "岩壁上的石龛与石碑：山体侧面的留言", en: "Rock-cut Stelae and Chapels, Abu Simbel", text: "离开前，再次路过我脚下时，不妨留意大神庙的山崖侧面——上面嵌着几个深凹的矩形石龛。先说清一件事：它们不是门，进不去神庙，那里面没有通道，只有刻满浮雕和铭文的石面。这是我在山体侧壁上给自己\"留言\"的地方。\n最重要的一块，是\"婚姻石碑\"（婚姻石碑）。 在前面卡迭石部分的解说里我提过它：立面角落的三块大石碑里，最大的一块记的就是赫梯公主远嫁埃及这件事。石碑上，我把它讲成一个漂亮的外交故事——赫梯大王俯首求亲，公主带着浩浩荡荡的嫁妆北上，我在河边笑着迎接。真实背景是多年的拉锯战打不动了，双方各退一步：条约、联姻、体面。石头上刻的永远是体面那一面——这和卡迭石浮雕是同一套手艺。\n再看其他几个龛位和小型岩凿礼拜堂：北边露台一侧有太阳礼拜堂（供奉拉-霍拉赫提），立面南侧还有一座托特神小礼拜堂，也被后人称作\"出生屋\"。它们体量都不大，但功能清楚：把和王权、太阳、书写相关的小仪式，安置在主庙身边。\n还有一个容易被忽略的观察点：这些石龛的凿法和整座神庙一模一样——先在岩面上开槽留出碑形，再把槽内凿深、磨平、刻线。你在这里看到的是\"半成品状态\"的山体开凿：主庙是把山掏空，这里是只在表面\"咬\"几口。\n提醒一句：搬迁重组时，这些石碑和小礼拜堂是按原布局重新嵌装在新崖壁上的，具体哪一块对应哪座碑，请以现场标识牌为准；有争议的辨识不要讲死。\n为什么值得单讲一站？因为它是很好的\"方法课\"：学会先问\"这是门还是面\"，再问\"刻的是什么、给谁看\"——你再看任何一座埃及神庙，都能自己读出三成内容。" }
         };
+
+        /* ===== 点位照片：null = 预留占位（无实景图），填路径即可显示 ===== */
+        const spotPhotos = {
+            0: "images/spot0.jpg",
+            1: "images/spot1.jpg",
+            2: "images/spot2.png",
+            3: "images/spot3.png",
+            4: "images/spot4.jpg",
+            5: "images/spot5.jpg",
+            6: "images/spot6.jpg",
+            7: "images/spot7.jpg",
+            8: "images/spot8.jpg",
+            9: "images/spot9.jpg",
+            10: "images/spot10.jpg",
+            11: "images/spot11.jpg",
+            12: "images/spot12.jpg",
+            13: "images/spot13.jpg",
+            14: "images/spot14.jpg",
+            15: "images/spot15.jpg",
+            16: "images/spot16.jpg"
+        };
+
+        /* ===== 倍速 ===== */
+        const SPEEDS = [1.0, 1.5, 2.0, 0.8];
+        let speedIdx = 0;
+
         let currentSpotId = null;
         let eventSource = null;
-        let fullAnswer = ""; //全局保存回答文本
+        let fullAnswer = "";
         const player = document.getElementById("global-player");
         const playBtn = document.getElementById("play-trigger");
+        const modalPlay = document.getElementById("modal-play");
+        const modal = document.getElementById("spot-modal");
 
+        /* ===== 选中点位：底部播放条更新 + 弹出详情层 ===== */
         function selectSpot(id) {
             currentSpotId = id;
-            
-            document.querySelectorAll(".spot-marker").forEach((el, index) => {
-                if (index === id) el.classList.add("active");
-                else el.classList.remove("active");
+            const s = SPOTS[id];
+            if (!s) return;
+            document.querySelectorAll(".spot-marker").forEach(el => {
+                el.classList.toggle("active", Number(el.dataset.spot) === id);
             });
-            document.getElementById("spot-title").innerText = spotNames[id];
+            // 底部播放条
+            document.getElementById("spot-title").innerText = `🔊 ${id}. ${s.cn}`;
+            document.getElementById("spot-sub").innerText = s.en;
             playBtn.removeAttribute("disabled");
-            playBtn.innerText = "播放";
-            player.src = `audio/${id}.mp3`;
-            player.play().then(() => {
-                playBtn.innerText = "暂停";
-            }).catch(e => console.log("用户需交互后播放"));
-            document.getElementById("ai-bubble").innerHTML = `🔮 <b>法老密示：</b><br>你已抵达【${spotNames[id]}】。听完我的低语，如果还有不解之谜，写在下方问我。`;
+            // 弹出详情层
+            openModal(id, s);
         }
+
+        function transcriptHTML(s) {
+            const paras = s.text.split("\n").filter(x => x.trim());
+            return `<div class="t-title">${s.cn} <span class="t-en">${s.en}</span></div>`
+                 + paras.map(p => `<p>${p}</p>`).join("");
+        }
+
+        /* ===== 详情弹层：图片(或预留位) / 播放条 / 文字 ===== */
+        function openModal(id, s) {
+            document.getElementById("modal-title").innerText = `${id}. ${s.cn}`;
+            document.getElementById("modal-sub").innerText = s.en;
+            document.getElementById("modal-transcript").innerHTML = transcriptHTML(s);
+
+            // 图片或预留占位
+            const frame = document.getElementById("photo-frame");
+            const photo = spotPhotos[id];
+            if (photo) {
+                frame.innerHTML = `<img src="${photo}" alt="${s.cn}" id="modal-img">`;
+                const img = document.getElementById("modal-img");
+                img.addEventListener("error", function() {
+                    frame.innerHTML = placeholderHTML("图片加载失败，请检查路径：" + photo);
+                });
+            } else {
+                frame.innerHTML = placeholderHTML("以现场实景图为准");
+            }
+
+            // 加载音频
+            loadAudio(`audio/spot${String(id).padStart(2, "0")}.mp3`);
+            modal.classList.add("show");
+        }
+
+        function placeholderHTML(msg) {
+            return `<div class="photo-placeholder">
+                <div class="ph-icon">🖼️</div>
+                <div>${msg}</div>
+            </div>`;
+        }
+
+        function closeModal(event, force) {
+            if (!force && event && event.target !== modal) return;
+            modal.classList.remove("show");
+            player.pause();
+        }
+
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape" && modal.classList.contains("show")) closeModal(null, true);
+        });
+
+        /* ===== 音频播放（预生成 mp3 + 倍速） ===== */
+        function loadAudio(src) {
+            player.pause();
+            player.src = src;
+            player.playbackRate = SPEEDS[speedIdx];
+            player.play().then(() => setPlayState(true)).catch(() => setPlayState(false));
+        }
+
+        function setPlayState(playing) {
+            const label = playing ? "暂停" : "播放";
+            playBtn.innerText = label;
+            modalPlay.innerText = label;
+        }
+
         function toggleAudio() {
             if (currentSpotId === null) return;
-            if (player.paused) {
-                player.play();
-                playBtn.innerText = "暂停";
-            } else {
-                player.pause();
-                playBtn.innerText = "播放";
+            if (player.paused) { player.play(); setPlayState(true); }
+            else { player.pause(); setPlayState(false); }
+        }
+
+        function cycleSpeed() {
+            speedIdx = (speedIdx + 1) % SPEEDS.length;
+            player.playbackRate = SPEEDS[speedIdx];
+            document.getElementById("speed-btn").innerText = SPEEDS[speedIdx].toFixed(2).replace(/0$/,"") + "x";
+        }
+
+        function fmt(t) {
+            if (!isFinite(t)) return "--:--";
+            const m = Math.floor(t/60), s = Math.floor(t%60);
+            return m + ":" + String(s).padStart(2, "0");
+        }
+
+        player.addEventListener("timeupdate", () => {
+            const pct = (player.currentTime / player.duration * 100) || 0;
+            document.getElementById("modal-played").style.width = pct + "%";
+            document.getElementById("modal-time").innerText = fmt(player.currentTime) + " / " + fmt(player.duration);
+        });
+
+        function seekAudio(e) {
+            const track = document.getElementById("modal-track");
+            const rect = track.getBoundingClientRect();
+            const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+            if (isFinite(player.duration)) player.currentTime = ratio * player.duration;
+        }
+
+        /* ===== 地图整体缩放拖动（双指捏合 / 双击放大 / 滚轮，可拖动平移） ===== */
+        (function () {
+            const mc = document.getElementById("map-container");
+            const wrap = mc.querySelector(".map-wrapper");
+            const MIN = 1, MAX = 4;
+
+            wrap.style.transformOrigin = "0 0";
+            wrap.style.willChange = "transform";
+
+            let scale = 1, tx = 0, ty = 0;      // transform 状态
+            let moved = false;                   // 本次手势是否为拖动（抑制误触点击）
+            let mode = "none";                   // none / pan / pinch
+            let startX = 0, startY = 0, baseTx = 0, baseTy = 0;
+            let pinchDist0 = 0, pinchScale0 = 1, pinchMid = null;
+            let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+
+            function baseX() { return wrap.offsetLeft; }
+            function baseY() { return wrap.offsetTop; }
+
+            function apply() {
+                const r = mc.getBoundingClientRect();
+                const w = wrap.offsetWidth * scale, h = wrap.offsetHeight * scale;
+                // 拖动边界：内容始终覆盖容器；缩到 1x 时回正
+                if (w <= r.width) tx = (r.width - w) / 2 - baseX();
+                else tx = Math.min(-baseX(), Math.max(r.width - w - baseX(), tx));
+                if (h <= r.height) ty = (r.height - h) / 2 - baseY();
+                else ty = Math.min(-baseY(), Math.max(r.height - h - baseY(), ty));
+                wrap.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
             }
-        }
-        function handleKeyPress(e) {
-            if (e.key === 'Enter') askPharaoh();
-        }
+
+            function zoomAt(px, py, factor) {
+                const ns = Math.min(MAX, Math.max(MIN, scale * factor));
+                const k = ns / scale;
+                // 以容器坐标 (px,py) 为锚点缩放（wrap 布局原点在 baseX/baseY）
+                tx = (px - baseX()) - ((px - baseX()) - tx) * k;
+                ty = (py - baseY()) - ((py - baseY()) - ty) * k;
+                scale = ns;
+                apply();
+            }
+
+            window.resetZoom = function () {
+                scale = 1; tx = 0; ty = 0;
+                wrap.style.transition = "transform .25s ease";
+                apply();
+                setTimeout(() => wrap.style.transition = "", 260);
+            };
+
+            /* ---- 触摸手势 ---- */
+            mc.addEventListener("touchstart", e => {
+                if (modal.classList.contains("show")) return;
+                if (e.touches.length === 1) {
+                    mode = "pan";
+                    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+                    baseTx = tx; baseTy = ty; moved = false;
+                } else if (e.touches.length === 2) {
+                    mode = "pinch";
+                    const [a, b] = e.touches;
+                    pinchDist0 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+                    pinchScale0 = scale;
+                    pinchMid = { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+                    moved = true; // 双指期间不算点击
+                }
+            }, { passive: true });
+
+            mc.addEventListener("touchmove", e => {
+                if (modal.classList.contains("show")) return;
+                if (mode === "pan" && e.touches.length === 1 && scale > 1) {
+                    const dx = e.touches[0].clientX - startX;
+                    const dy = e.touches[0].clientY - startY;
+                    if (Math.abs(dx) + Math.abs(dy) > 8) moved = true;
+                    tx = baseTx + dx; ty = baseTy + dy;
+                    apply();
+                } else if (mode === "pinch" && e.touches.length === 2) {
+                    const [a, b] = e.touches;
+                    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+                    const r = mc.getBoundingClientRect();
+                    // 从手势起点状态整体重算，保证锚点稳定
+                    const ns = Math.min(MAX, Math.max(MIN, pinchScale0 * d / pinchDist0));
+                    const k = ns / pinchScale0;
+                    const px = pinchMid.x - r.left, py = pinchMid.y - r.top;
+                    scale = pinchScale0;
+                    tx = baseTx; ty = baseTy;
+                    tx = (px - baseX()) - ((px - baseX()) - tx) * k;
+                    ty = (py - baseY()) - ((py - baseY()) - ty) * k;
+                    scale = ns;
+                    apply();
+                }
+                if (mode !== "none") e.preventDefault();
+            }, { passive: false });
+
+            mc.addEventListener("touchend", e => {
+                if (mode === "pinch" && e.touches.length < 2) {
+                    mode = "none";
+                    if (e.touches.length === 1) { // 余下一指转为拖动
+                        mode = "pan";
+                        startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+                        baseTx = tx; baseTy = ty;
+                    }
+                    return;
+                }
+                if (mode === "pan" && e.touches.length === 0) {
+                    mode = "none";
+                    // 双击（双触）放大：300ms 内两次点按同一位置
+                    if (!moved) {
+                        const t = Date.now();
+                        const r = mc.getBoundingClientRect();
+                        const px = (e.changedTouches[0] || { clientX: 0 }).clientX - r.left;
+                        const py = (e.changedTouches[0] || { clientY: 0 }).clientY - r.top;
+                        if (t - lastTapT < 300 && Math.abs(px - lastTapX) < 40 && Math.abs(py - lastTapY) < 40) {
+                            if (scale > 1) resetZoom(); else zoomAt(px, py, 2.5);
+                            lastTapT = 0;
+                        } else {
+                            lastTapT = t; lastTapX = px; lastTapY = py;
+                        }
+                    }
+                }
+            });
+
+            /* ---- 拖动后抑制误触点位点击 ---- */
+            mc.addEventListener("click", e => {
+                if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+            }, true);
+
+            /* ---- 桌面端：滚轮缩放 ---- */
+            mc.addEventListener("wheel", e => {
+                e.preventDefault();
+                const r = mc.getBoundingClientRect();
+                zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+            }, { passive: false });
+
+            /* ---- 桌面端：鼠标拖动 ---- */
+            mc.addEventListener("mousedown", e => {
+                if (scale === 1) return;
+                mode = "pan"; moved = false;
+                startX = e.clientX; startY = e.clientY; baseTx = tx; baseTy = ty;
+                const onMove = ev => {
+                    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+                    if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+                    tx = baseTx + dx; ty = baseTy + dy; apply();
+                };
+                const onUp = () => {
+                    mode = "none";
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+            });
+
+            mc.addEventListener("dblclick", e => {
+                const r = mc.getBoundingClientRect();
+                if (scale > 1) resetZoom();
+                else zoomAt(e.clientX - r.left, e.clientY - r.top, 2.5);
+            });
+
+            window.addEventListener("resize", apply);
+        })();
+
+        /* ===== 法老密示：AI 问答（SSE） ===== */
+        function handleKeyPress(e) { if (e.key === "Enter") askPharaoh(); }
+
         function askPharaoh() {
             const input = document.getElementById("user-question");
             const bubble = document.getElementById("ai-bubble");
@@ -239,93 +558,53 @@
             const question = input.value.trim();
             if (!question) return;
 
-            // 关闭上一次SSE连接，解决只能第一问
-            if(eventSource){
-                eventSource.close();
-                eventSource = null;
-            }
-            fullAnswer = ""; //每次新提问清空回答缓存
-
-            input.value = "";
-            input.disabled = true;
-            btn.disabled = true;
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            fullAnswer = "";
+            input.value = ""; input.disabled = true; btn.disabled = true;
             bubble.innerHTML = "⏳ <i>法老正拨开三千年的风沙，在泥板上翻阅史料...</i>";
 
             const contextQuestion = currentSpotId !== null
-                ? `当前游客在：${spotNames[currentSpotId]}。问题是：${question}`
+                ? `当前游客在阿布辛贝神庙：${SPOTS[currentSpotId].cn}（${SPOTS[currentSpotId].en}）。问题是：${question}`
                 : question;
 
             const url = `/api/chat?question=${encodeURIComponent(contextQuestion)}`;
             eventSource = new EventSource(url);
 
-            eventSource.addEventListener("conversation.message.delta", function(e){
+            eventSource.addEventListener("conversation.message.delta", function (e) {
                 try {
                     const obj = JSON.parse(e.data);
-                    if(obj.type === "answer"){
-                        // 当前模型bug content为空，临时读取reasoning_content输出
+                    if (obj.type === "answer") {
                         const textChunk = obj.content || obj.reasoning_content || "";
-                        if(textChunk){
+                        if (textChunk) {
                             fullAnswer += textChunk;
                             bubble.innerHTML = `🔮 <b>法老密示：</b><br>${fullAnswer}`;
                         }
                     }
-                } catch(err) {
-                    console.log("delta解析跳过",err);
-                }
+                } catch (err) { console.log("delta解析跳过", err); }
             });
-
-            // 对话正常结束
-            eventSource.addEventListener("conversation.chat.completed", function(){
+            eventSource.addEventListener("conversation.chat.completed", safeClose);
+            eventSource.addEventListener("conversation.chat.failed", function () {
+                bubble.innerHTML = "🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。";
                 safeClose();
             });
-
-            // AI调用失败
-            eventSource.addEventListener('conversation.chat.failed', function(){
-                bubble.innerHTML = `🔮 <b>法老密示：</b><br>神殿算力已耗尽，请稍后再向我发问。`;
-                safeClose();
-            });
-
-            // SSE网络出错
-            eventSource.onerror = function(){
-                bubble.innerHTML = `🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。`;
+            eventSource.onerror = function () {
+                bubble.innerHTML = "🔮 <b>法老密示：</b><br>法老正在神殿沉睡，恢复网络后再来打扰吧。";
                 safeClose();
             };
-
-            function safeClose(){
-                if(eventSource){
-                    eventSource.close();
-                    eventSource = null;
-                }
-                input.disabled = false;
-                btn.disabled = false;
+            function safeClose() {
+                if (eventSource) { eventSource.close(); eventSource = null; }
+                input.disabled = false; btn.disabled = false;
             }
         }
 
-        // 注册 PWA 离线服务
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('离线导览系统准备就绪！'))
-                    .catch(err => console.log('离线注册失败:', err));
+        /* ===== PWA 离线服务 ===== */
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("/sw.js")
+                    .then(() => console.log("离线导览系统准备就绪！"))
+                    .catch(err => console.log("离线注册失败:", err));
             });
         }
     </script>
-    <!-- 在 </body> 前引入新文件 -->
-<script src="invite-auth.js"></script>
-
-<script>
-  // 你原本按钮点击发送消息的地方，改成这样调用：
-  async function handleSend() {
-    const inputMessage = "介绍一下黄道十二宫"; // 用户的提问文本
-    
-    // 一行代码调用我们刚刚新建的文件函数
-    const data = await sendAuthChat(inputMessage);
-    
-    if (data) {
-      console.log("AI 回答内容：", data);
-      // 接下来正常展示你的 Coze AI 回答即可
-    }
-  }
-</script>
 </body>
 </html>
