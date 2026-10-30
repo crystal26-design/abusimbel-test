@@ -1,20 +1,22 @@
 // sw.js - 离线缓存核心脚本
 const CACHE_NAME = 'abusimbel-offline-v1';
-
-// 需要在有网络时，强行下载到游客手机本地的静态资源清单
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/images/map.jpg',
-  '/audio/0.mp3',
-  '/audio/1.mp3',
-  '/audio/2.mp3',
-  '/audio/3.mp3',
-  '/audio/4.mp3',
-  '/audio/5.mp3',
-  '/audio/6.mp3',
-  '/audio/7.mp3',
-  '/audio/8.mp3'
+  '/audio/spot00.mp3',
+  '/audio/spot01.mp3',
+  '/audio/spot02.mp3',
+  '/audio/spot03.mp3',
+  '/audio/spot04.mp3',
+  '/audio/spot05.mp3',
+  '/audio/spot06.mp3',
+  '/audio/spot07.mp3',
+  '/audio/spot08.mp3',
+  '/audio/spot09.mp3',
+  '/audio/spot10.mp3',
+  '/audio/spot11.mp3',
+  '/audio/spot12.mp3',
+  '/audio/spot13.mp3',
+  '/audio/spot14.mp3',
+  '/audio/spot15.mp3',
+  '/audio/spot16.mp3',
 ];
 
 // 1. 安装阶段：强行把地图和所有音频存入手机本地
