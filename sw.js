@@ -1,5 +1,30 @@
 // sw.js - 离线缓存核心脚本
 const CACHE_NAME = 'abusimbel-offline-v1';
+
+// 需要在有网络时，强行下载到游客手机本地的静态资源清单
+const ASSETS_TO_CACHE = [
+  '/',
+  '/index.html',
+  '/images/map.png',
+  'images/spot0.jpg',
+  'images/spot1.jpg',
+  'images/spot2.png',
+  'images/spot3.png',
+  'images/spot4.jpg',
+  'images/spot5.jpg',
+  'images/spot6.jpg',
+  'images/spot7.jpg',
+  'images/spot8.jpg',
+  'images/spot9.jpg',
+  'images/spot10.jpg',
+  'images/spot11.jpg',
+  'images/spot12.jpg",
+  'images/spot13.jpg',
+  'images/spot14.jpg',
+  'images/spot15.jpg',
+  'images/spot16.jpg'
+]
+[
   '/audio/spot00.mp3',
   '/audio/spot01.mp3',
   '/audio/spot02.mp3',
