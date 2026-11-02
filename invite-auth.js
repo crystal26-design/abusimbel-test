@@ -19,7 +19,7 @@ async function sendAuthChat(userMessage) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: userMessage,
-      inviteCode: EGYPT888
+      inviteCode: CODE
     })
   });
 
